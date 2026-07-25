@@ -123,10 +123,9 @@ async function buildClip(
     const prompt = input.business?.style
       ? `${input.business.style}, subtle cinematic motion`
       : "subtle cinematic motion, gentle parallax";
-    const clipUrl = await falApi.imageToVideo(imageUrl, {
-      prompt,
-      durationSeconds: Math.round(seconds),
-    });
+    // fal generates a fixed-length clip (config.falI2vDuration); normalizeClip
+    // below trims it to `seconds` so the video still paces to the narration.
+    const clipUrl = await falApi.imageToVideo(imageUrl, { prompt });
     const local = await ff.download(clipUrl, path.join(work, `fal-${randomUUID()}.mp4`));
     return ff.normalizeClip(local, out, seconds);
   }

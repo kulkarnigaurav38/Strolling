@@ -20,6 +20,10 @@ export const config = {
   /** fal image-to-video model. Swap the exact slug to taste. */
   falI2vModel:
     process.env.FAL_I2V_MODEL ?? "fal-ai/kling-video/v1/standard/image-to-video",
+  /** Clip length the i2v model generates. Model-specific — kling accepts "5"|"10".
+   *  ffmpeg trims each clip to the narration pacing afterwards, so this is just
+   *  the raw generation length. */
+  falI2vDuration: process.env.FAL_I2V_DURATION ?? "5",
   /** Optional fal text-to-speech model for narration. Empty → local/say fallback. */
   falTtsModel: process.env.FAL_TTS_MODEL ?? "",
   /** Where composed videos are written and served from (local fallback). */

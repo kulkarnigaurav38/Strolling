@@ -31,7 +31,8 @@ export async function uploadToStorage(
 
 export interface ImageToVideoOptions {
   prompt?: string;
-  durationSeconds?: number;
+  /** Generation length, in the model's own units (kling: "5" | "10"). */
+  duration?: string;
 }
 
 /**
@@ -49,9 +50,7 @@ export async function imageToVideo(
     input: {
       image_url: imageUrl,
       prompt: opts.prompt ?? "gentle cinematic motion, subtle parallax",
-      ...(opts.durationSeconds
-        ? { duration: String(opts.durationSeconds) }
-        : {}),
+      duration: opts.duration ?? config.falI2vDuration,
     },
     logs: false,
   })) as { data?: Record<string, any> } & Record<string, any>;
