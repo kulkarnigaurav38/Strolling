@@ -5,6 +5,7 @@ dist/
 
 # generated render outputs (local fallback)
 public/renders/
+public/uploads/
 coverage/
 .DS_Store
 .idea/

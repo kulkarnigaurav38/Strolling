@@ -2,14 +2,16 @@ import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/api/api_client.dart';
 import '../../../core/stroll/stroll_controller.dart';
 import '../../../core/stroll/stroll_models.dart';
 import '../../../core/theme.dart';
 
-/// Per-stop post builder: media preview, caption, platform, mock publish.
+/// Per-stop post builder: media preview, caption from render, share/publish.
 class StopPostScreen extends StatefulWidget {
   const StopPostScreen({super.key, required this.businessId});
 
@@ -27,8 +29,11 @@ class _StopPostScreenState extends State<StopPostScreen> {
   @override
   void initState() {
     super.initState();
+    final draft =
+        StrollScope.of(context, listen: false).state.draftFor(widget.businessId);
     _caption = TextEditingController(
-      text: draftCaption(businessById(widget.businessId)),
+      text: draft.renderedCaption ??
+          draftCaption(businessById(widget.businessId)),
     );
   }
 
@@ -40,18 +45,25 @@ class _StopPostScreenState extends State<StopPostScreen> {
 
   Future<void> _publish() async {
     setState(() => _publishing = true);
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-
     final controller = StrollScope.of(context, listen: false);
     final draft = controller.state.draftFor(widget.businessId);
+    final b = businessById(widget.businessId);
+
+    try {
+      await apiClient.publish(
+        videoUrl: draft.renderedVideoUrl ?? '/mock/sample.mp4',
+        transcript: draft.renderedScript ?? _caption.text,
+      );
+    } catch (_) {
+      // Still mark posted locally so the stroll can continue offline.
+    }
+
+    if (!mounted) return;
     controller.updateDraft(
       widget.businessId,
       draft.copyWith(posted: true, postedPlatform: _platform),
     );
-    final b = businessById(widget.businessId);
 
-    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: StrollingColors.success,
@@ -68,11 +80,32 @@ class _StopPostScreenState extends State<StopPostScreen> {
     if (context.canPop()) context.pop();
   }
 
+  Future<void> _share() async {
+    final draft =
+        StrollScope.of(context, listen: false).state.draftFor(widget.businessId);
+    final text = [
+      _caption.text.trim(),
+      if (draft.renderedHashtags != null) draft.renderedHashtags!.join(' '),
+      if (draft.renderedVideoUrl != null) draft.renderedVideoUrl!,
+    ].where((s) => s.isNotEmpty).join('\n');
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: StrollingColors.ink,
+        behavior: SnackBarBehavior.floating,
+        content: Text(
+          'Caption + link copied — paste anywhere to share.',
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final b = businessById(widget.businessId);
-    final draft =
-        StrollScope.of(context).state.draftFor(widget.businessId);
+    final draft = StrollScope.of(context).state.draftFor(widget.businessId);
 
     return Scaffold(
       backgroundColor: StrollingColors.background,
@@ -92,6 +125,13 @@ class _StopPostScreenState extends State<StopPostScreen> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'Copy share text',
+            onPressed: _share,
+            icon: const Icon(Icons.ios_share, color: StrollingColors.ink),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
@@ -119,12 +159,29 @@ class _StopPostScreenState extends State<StopPostScreen> {
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Center(
-                child: Icon(b.categoryIcon, size: 56, color: Colors.white),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(b.categoryIcon, size: 56, color: Colors.white),
+                    if (draft.renderedVideoUrl != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        draft.renderedVideoUrl!,
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
+            runSpacing: 8,
             children: [
               if (draft.hasVideo)
                 _badge(
@@ -144,8 +201,41 @@ class _StopPostScreenState extends State<StopPostScreen> {
                   'note attached',
                   StrollingColors.success,
                 ),
+              if (draft.renderedVideoUrl != null)
+                _badge(
+                  CupertinoIcons.play_fill,
+                  'reel ready',
+                  StrollingColors.primaryDeep,
+                ),
             ],
           ),
+          if (draft.renderedHashtags != null &&
+              draft.renderedHashtags!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final tag in draft.renderedHashtags!)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: StrollingColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      tag,
+                      style: GoogleFonts.nunito(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: StrollingColors.primaryDeep,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           Text(
             'CAPTION',
@@ -192,7 +282,11 @@ class _StopPostScreenState extends State<StopPostScreen> {
                 icon: CupertinoIcons.camera_fill,
                 selected: _platform == 'instagram',
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFF58529), Color(0xFFDD2A7B), Color(0xFF8134AF)],
+                  colors: [
+                    Color(0xFFF58529),
+                    Color(0xFFDD2A7B),
+                    Color(0xFF8134AF),
+                  ],
                 ),
                 onTap: () => setState(() => _platform = 'instagram'),
               ),
@@ -249,35 +343,66 @@ class _StopPostScreenState extends State<StopPostScreen> {
       bottomSheet: Container(
         color: StrollingColors.background,
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        child: Material(
-          color: StrollingColors.primaryDeep,
-          borderRadius: BorderRadius.circular(16),
-          child: InkWell(
-            onTap: _publishing ? null : _publish,
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              height: 58,
-              child: Center(
-                child: _publishing
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.5,
-                        ),
-                      )
-                    : Text(
-                        'Publish to ${_platform[0].toUpperCase()}${_platform.substring(1)} →',
+        child: Row(
+          children: [
+            Expanded(
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  onTap: _share,
+                  borderRadius: BorderRadius.circular(16),
+                  child: SizedBox(
+                    height: 58,
+                    child: Center(
+                      child: Text(
+                        'Share',
                         style: GoogleFonts.plusJakartaSans(
-                          color: Colors.white,
-                          fontSize: 17,
+                          color: StrollingColors.ink,
+                          fontSize: 16,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 2,
+              child: Material(
+                color: StrollingColors.primaryDeep,
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  onTap: _publishing ? null : _publish,
+                  borderRadius: BorderRadius.circular(16),
+                  child: SizedBox(
+                    height: 58,
+                    child: Center(
+                      child: _publishing
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : Text(
+                              'Publish to ${_platform[0].toUpperCase()}${_platform.substring(1)} →',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -12,6 +12,7 @@
 import { STROLL_BUSINESSES } from "./seed";
 import type {
   BusinessCategory,
+  SceneBlock,
   ScriptAction,
   ScriptStep,
   ScriptTemplateInfo,
@@ -53,8 +54,40 @@ export const SCRIPT_TEMPLATES: ScriptTemplateInfo[] = [
   },
 ];
 
+/** frontend_main sample pin ints → seed slugs (keeps map IDs stable). */
+const FRONTEND_ID_ALIASES: Record<string, string> = {
+  "1": "brot-roesterei",
+  "2": "alte-kanzlei",
+  "3": "stadtbibliothek",
+  "4": "markthalle",
+  "5": "palmengarten",
+  "6": "biergarten-schlossgarten",
+  "7": "weissenburgpark",
+  "8": "feuersee",
+  "9": "cursor-hackathon",
+};
+
 export function businessById(id: string): StrollBusiness | undefined {
-  return STROLL_BUSINESSES.find((b) => b.id === id);
+  const resolved = FRONTEND_ID_ALIASES[id] ?? id;
+  return STROLL_BUSINESSES.find((b) => b.id === resolved);
+}
+
+/** Resolve a stop id to a seed business, or a synthetic stand-in. */
+export function resolveBusiness(id: string): StrollBusiness {
+  const found = businessById(id);
+  if (found) return found;
+  // ⚠️ MOCK: unknown id → generic scene so the API never returns an empty script.
+  return {
+    id,
+    name: id,
+    category: "culture",
+    description: "A stop on the stroll.",
+    walkMinutes: 5,
+    rating: 4.5,
+    lat: 48.778,
+    lng: 9.18,
+    narration: "Pause here. Capture what makes this place itself.",
+  };
 }
 
 export function generateScript(
@@ -64,9 +97,7 @@ export function generateScript(
   const template = SCRIPT_TEMPLATES.some((t) => t.id === templateId)
     ? templateId
     : "doku";
-  const stops = stopIds
-    .map(businessById)
-    .filter((b): b is StrollBusiness => b !== undefined);
+  const stops = stopIds.map(resolveBusiness);
   return stops.map((b, i) => scene(template, i, b));
 }
 
@@ -80,6 +111,8 @@ function scene(t: string, index: number, b: StrollBusiness): ScriptStep {
   const extras = flavor(t).filter(
     (a) => !required.some((r) => r.kind === a.kind),
   );
+  const loc = locationFor(b);
+  const blocks = blocksFor(t, b);
 
   return {
     businessId: b.id,
@@ -88,7 +121,120 @@ function scene(t: string, index: number, b: StrollBusiness): ScriptStep {
     line: line(t, b.name),
     perkCallout,
     actions: [...required, ...extras],
+    locationTitle: loc.title,
+    locationBody: loc.body,
+    blocks,
   };
+}
+
+function locationFor(b: StrollBusiness): { title: string; body: string } {
+  // Stage-demo stop — INFOMOTION / Cursor hackathon venue.
+  if (b.id === "cursor-hackathon") {
+    return {
+      title: "City Gate · Friedrichstr. 6",
+      body: "INFOMOTION sits in City Gate, steps from the Hauptbahnhof. Data & AI consulting downstairs energy; Innovation Lab on the 4th floor. The demo stop: walk in, capture the room, walk out with a drink perk.",
+    };
+  }
+  const byCat: Record<BusinessCategory, { title: string; body: string }> = {
+    cafe: {
+      title: "The Bohnenviertel",
+      body: "Stuttgart's oldest residential quarter — specialty coffee and stone-baked bread before the city wakes up.",
+    },
+    food: {
+      title: "Around Mitte",
+      body: "Swabian cooking in side streets — wood panels, long tables, wine without ceremony.",
+    },
+    drinks: {
+      title: "Golden hour terrace",
+      body: "When the light hits the benches, conversations stretch. Locals claim tables early.",
+    },
+    culture: {
+      title: "City stage",
+      body: "Public squares designed for lingering. Facades do the talking — give them a clean frame.",
+    },
+    market: {
+      title: "The Markthalle",
+      body: "Art Nouveau arches, produce piled high, and a hum that never quite stops.",
+    },
+  };
+  return byCat[b.category];
+}
+
+function blocksFor(t: string, b: StrollBusiness): SceneBlock[] {
+  if (b.id === "cursor-hackathon") {
+    return [
+      {
+        kind: "narrative",
+        narrative:
+          "You're at City Gate, Friedrichstraße 6 — right next to the Hauptbahnhof. The glass lobby opens onto elevators; INFOMOTION's Innovation Lab is on the 4th floor. Pause in the lobby before you go up — the building does the talking.",
+      },
+      {
+        kind: "capture",
+        captureTitle: "CAPTURE — WALK-IN SHOT",
+        capturePrompt:
+          "Film the approach into City Gate: facade → lobby → elevator call. One continuous walk-in, no cuts.",
+        captureKind: "video",
+      },
+      {
+        kind: "narrative",
+        narrative:
+          "On the 4th floor: laptops, teams, sponsor stickers, city view. This is where the Cursor hackathon lives for the day. Find a clean frame of the room before the demos start — energy first, polish later.",
+      },
+      {
+        kind: "capture",
+        captureTitle: "CAPTURE — THE ROOM",
+        capturePrompt:
+          "Photo of the Innovation Lab floor or the window view — natural light, no filter. Signage or logo in frame if you can get it clean.",
+        captureKind: "photo",
+      },
+      {
+        kind: "narrative",
+        narrative:
+          "The perk is a free drink at the bar when you show your finished video. Before you leave, one honest take: what building something here feels like.",
+      },
+      {
+        kind: "capture",
+        captureTitle: "CAPTURE — YOUR TAKE",
+        capturePrompt:
+          "Tell the camera what INFOMOTION / the hackathon floor feels like — one honest take, first try.",
+        captureKind: "voice",
+      },
+    ];
+  }
+
+  return [
+    {
+      kind: "narrative",
+      narrative: `Make your way to ${b.name}. Take the scenic approach — streets before the stop.`,
+    },
+    {
+      kind: "capture",
+      captureTitle: "CAPTURE — WALK-IN SHOT",
+      capturePrompt: "Film the last thirty seconds of your walk-in.",
+      captureKind: "video",
+    },
+    {
+      kind: "narrative",
+      narrative: `${b.name}. ${b.description}`,
+    },
+    {
+      kind: "capture",
+      captureTitle: "CAPTURE — THE DETAIL",
+      capturePrompt: photoPrompt(t),
+      captureKind: "photo",
+    },
+    {
+      kind: "narrative",
+      narrative:
+        "Before you leave, take one beat for yourself — what would you tell a friend waiting around the corner?",
+    },
+    {
+      kind: "capture",
+      captureTitle: "CAPTURE — YOUR TAKE",
+      capturePrompt: `Tell the camera what ${b.name} feels like — one honest take, first try.`,
+      captureKind: "voice",
+    },
+  ];
 }
 
 /** "1 photo + 1 story post" / "1 reel + tag us" → required capture actions. */

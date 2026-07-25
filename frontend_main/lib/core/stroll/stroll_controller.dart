@@ -37,11 +37,16 @@ class StrollController extends ChangeNotifier {
     await prefs.setString(_kStrollKey, json);
   }
 
-  void start(List<int> stopIds, {required String templateId}) {
+  void start(
+    List<int> stopIds, {
+    required String templateId,
+    List<ScriptStep> steps = const [],
+  }) {
     _state = StrollState(
       stopIds: List<int>.from(stopIds),
       drafts: {for (final id in stopIds) id: StopDraft(businessId: id)},
       templateId: templateId,
+      steps: List<ScriptStep>.from(steps),
     );
     notifyListeners();
     _persist();

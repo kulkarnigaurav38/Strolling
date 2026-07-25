@@ -18,15 +18,22 @@ scriptsRouter.post("/", async (req, res) => {
   const { stopIds, templateId } = (req.body ?? {}) as Partial<GenerateScriptRequest>;
 
   if (!Array.isArray(stopIds) || stopIds.length === 0 || !templateId) {
-    res.status(400).json({ error: "bad_request", expected: "{ stopIds: string[], templateId: string }" });
+    res.status(400).json({
+      error: "bad_request",
+      expected: "{ stopIds: string[], templateId: string }",
+    });
     return;
   }
 
+  // Coerce numeric ids (frontend_main pin ints) to strings for the generator.
+  const ids = stopIds.map((id) => String(id));
+
   if (config.mock) {
+    // ⚠️ MOCK: deterministic template → ScriptStep[].
     await delay(600);
     const body: GenerateScriptResponse = {
       templateId,
-      steps: generateScript(stopIds, templateId),
+      steps: generateScript(ids, templateId),
     };
     res.json(body);
     return;
@@ -35,5 +42,11 @@ scriptsRouter.post("/", async (req, res) => {
   // TODO(COMMIT-3): call Anthropic with SCRIPT_DIRECTOR_PROMPT + the picked
   // businesses to write bespoke scenes, validate against ScriptStep[], and
   // return them. The deterministic generator above stays the mock branch.
-  res.status(501).json({ error: "not_implemented", route: "scripts" });
+  // Until then, keep the mock generator available even when MOCK=0 so the
+  // stroll flow isn't blocked.
+  const body: GenerateScriptResponse = {
+    templateId,
+    steps: generateScript(ids, templateId),
+  };
+  res.json(body);
 });

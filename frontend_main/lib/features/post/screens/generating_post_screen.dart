@@ -5,11 +5,15 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/api/api_client.dart';
 import '../../../core/router.dart';
+import '../../../core/stroll/script_templates.dart';
+import '../../../core/stroll/stroll_controller.dart';
+import '../../../core/stroll/stroll_models.dart';
 import '../../../core/theme.dart';
 
 /// Full-screen “we're generating your post” beat between capture and the
-/// post editor. Purely presentational — no backend yet.
+/// post editor. Calls POST /api/render (or a contract-shaped mock).
 class GeneratingPostScreen extends StatefulWidget {
   const GeneratingPostScreen({super.key, required this.businessId});
 
@@ -24,7 +28,9 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
   static const _messages = [
     'Framing your shots…',
     'Writing a caption worth posting…',
-    'Tuning the vibe…',
+    'Animating stills…',
+    'Recording the voiceover…',
+    'Cutting it together…',
     'Almost ready…',
   ];
 
@@ -34,6 +40,7 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
   late final AnimationController _message;
 
   int _messageIndex = 0;
+  String? _error;
 
   @override
   void initState() {
@@ -51,7 +58,7 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
 
     _progress = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2800),
+      duration: const Duration(milliseconds: 90000),
     )..forward();
 
     _message = AnimationController(
@@ -60,13 +67,13 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
     )..forward();
 
     _cycleMessages();
-    _finishWhenReady();
+    _renderAndFinish();
   }
 
   Future<void> _cycleMessages() async {
     for (var i = 1; i < _messages.length; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 650));
-      if (!mounted) return;
+      await Future<void>.delayed(const Duration(seconds: 12));
+      if (!mounted || _error != null) return;
       await _message.reverse();
       if (!mounted) return;
       setState(() => _messageIndex = i);
@@ -74,10 +81,47 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
     }
   }
 
-  Future<void> _finishWhenReady() async {
-    await Future<void>.delayed(const Duration(milliseconds: 3000));
-    if (!mounted) return;
-    context.pushReplacement(AppRoutes.postPath(widget.businessId));
+  Future<void> _renderAndFinish() async {
+    final controller = StrollScope.of(context, listen: false);
+    final stroll = controller.state;
+    final draft = stroll.draftFor(widget.businessId);
+    final b = businessById(widget.businessId);
+    final script = scriptForStroll(stroll);
+    final step = script.firstWhere(
+      (s) => s.businessId == widget.businessId,
+      orElse: () => script.isNotEmpty
+          ? script.first
+          : ScriptStep(
+              businessId: widget.businessId,
+              sceneTitle: 'SCENE',
+              direction: '',
+              line: draftCaption(b),
+              actions: const [],
+            ),
+    );
+
+    try {
+      final outcome = await apiClient.render(
+        business: b,
+        draft: draft,
+        step: step,
+      );
+      if (!mounted) return;
+      final pkg = outcome.package;
+      controller.updateDraft(
+        widget.businessId,
+        outcome.draft.copyWith(
+          renderedVideoUrl: pkg.absoluteVideoUrl,
+          renderedCaption: pkg.caption,
+          renderedHashtags: pkg.hashtags,
+          renderedScript: pkg.script,
+        ),
+      );
+      context.pushReplacement(AppRoutes.postPath(widget.businessId));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not render — tap to retry');
+    }
   }
 
   @override
@@ -127,7 +171,10 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
                           children: [
                             for (final ring in const [1.0, 0.72, 0.48])
                               Transform.rotate(
-                                angle: _spin.value * math.pi * 2 * (ring == 1.0 ? 1 : -0.6),
+                                angle: _spin.value *
+                                    math.pi *
+                                    2 *
+                                    (ring == 1.0 ? 1 : -0.6),
                                 child: CustomPaint(
                                   size: Size(168 * ring, 168 * ring),
                                   painter: _OrbitPainter(
@@ -185,29 +232,47 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
                   ),
                 ),
                 const SizedBox(height: 14),
-                FadeTransition(
-                  opacity: _message,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0, 0.18),
-                      end: Offset.zero,
-                    ).animate(
-                      CurvedAnimation(
-                        parent: _message,
-                        curve: Curves.easeOutCubic,
-                      ),
-                    ),
+                if (_error != null)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() => _error = null);
+                      _renderAndFinish();
+                    },
                     child: Text(
-                      _messages[_messageIndex],
+                      _error!,
                       textAlign: TextAlign.center,
                       style: GoogleFonts.nunito(
                         fontSize: 16,
                         height: 1.4,
-                        color: Colors.white.withValues(alpha: 0.88),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                else
+                  FadeTransition(
+                    opacity: _message,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.18),
+                        end: Offset.zero,
+                      ).animate(
+                        CurvedAnimation(
+                          parent: _message,
+                          curve: Curves.easeOutCubic,
+                        ),
+                      ),
+                      child: Text(
+                        _messages[_messageIndex],
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.nunito(
+                          fontSize: 16,
+                          height: 1.4,
+                          color: Colors.white.withValues(alpha: 0.88),
+                        ),
                       ),
                     ),
                   ),
-                ),
                 const Spacer(flex: 2),
                 AnimatedBuilder(
                   animation: _progress,

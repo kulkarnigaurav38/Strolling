@@ -14,5 +14,6 @@ export function errorHandler(
     return;
   }
   console.error("[strolling] unhandled error:", err);
-  res.status(500).json({ error: "internal_error" });
+  const message = err instanceof Error ? err.message : "internal_error";
+  res.status(500).json({ error: "internal_error", message });
 }

@@ -14,6 +14,7 @@ class MapBusiness {
     required this.latLng,
     required this.imageUrl,
     required this.hasPerk,
+    this.apiId,
     this.perk,
     this.perkVal,
     this.perkColor = const Color(0xFF888699),
@@ -22,6 +23,8 @@ class MapBusiness {
   });
 
   final int id;
+  /// Backend seed slug (`src/lib/seed.ts`). Defaults to `id` as string.
+  final String? apiId;
   final String name;
   final String category;
   final String desc;
@@ -35,6 +38,9 @@ class MapBusiness {
   final Color perkColor;
   final String? required;
   final String? filterKey;
+
+  /// Id sent to POST /api/scripts and /api/render.
+  String get backendId => apiId ?? id.toString();
 
   String get emoji => switch (category) {
         'Café' => '☕',

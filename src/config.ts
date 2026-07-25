@@ -37,6 +37,8 @@ export const config = {
   elevenLabsModel: process.env.ELEVENLABS_MODEL ?? "eleven_multilingual_v2",
   /** Where composed videos are written and served from (local fallback). */
   rendersDir: path.join(process.cwd(), "public", "renders"),
+  /** Where uploaded captures land when fal isn't used. Served at /uploads. */
+  uploadsDir: path.join(process.cwd(), "public", "uploads"),
   /** Absolute base for returned URLs (e.g. https://api.strolling.app). Empty → relative. */
   publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "",
 

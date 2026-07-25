@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -9,26 +11,44 @@ import '../../features/map/data/sample_businesses.dart';
 class StopDraft {
   final int businessId;
   final String? photoBase64;
+  /// Durable URL from POST /api/media/upload (preferred for render).
+  final String? photoUrl;
   final String? videoName;
+  final String? videoUrl;
+  /// In-memory only — never written to SharedPreferences (clips are large).
+  final Uint8List? videoBytes;
   final int? voiceSeconds;
   final String? note;
   final DateTime? savedAt;
   final bool posted;
   final String? postedPlatform;
+  /// Filled after POST /api/render returns a post package.
+  final String? renderedVideoUrl;
+  final String? renderedCaption;
+  final List<String>? renderedHashtags;
+  final String? renderedScript;
 
   const StopDraft({
     required this.businessId,
     this.photoBase64,
+    this.photoUrl,
     this.videoName,
+    this.videoUrl,
+    this.videoBytes,
     this.voiceSeconds,
     this.note,
     this.savedAt,
     this.posted = false,
     this.postedPlatform,
+    this.renderedVideoUrl,
+    this.renderedCaption,
+    this.renderedHashtags,
+    this.renderedScript,
   });
 
-  bool get hasPhoto => photoBase64 != null;
-  bool get hasVideo => videoName != null;
+  bool get hasPhoto => photoBase64 != null || photoUrl != null;
+  bool get hasVideo =>
+      videoName != null || videoUrl != null || videoBytes != null;
   bool get hasVoice => voiceSeconds != null;
   bool get hasNote => note != null && note!.trim().isNotEmpty;
   bool get hasAnyCapture => hasPhoto || hasVideo || hasVoice || hasNote;
@@ -42,33 +62,53 @@ class StopDraft {
 
   StopDraft copyWith({
     String? photoBase64,
+    String? photoUrl,
     String? videoName,
+    String? videoUrl,
+    Uint8List? videoBytes,
     int? voiceSeconds,
     String? note,
     DateTime? savedAt,
     bool? posted,
     String? postedPlatform,
+    String? renderedVideoUrl,
+    String? renderedCaption,
+    List<String>? renderedHashtags,
+    String? renderedScript,
     bool clearPhoto = false,
     bool clearVideo = false,
     bool clearVoice = false,
     bool clearNote = false,
+    bool clearVideoBytes = false,
   }) {
     return StopDraft(
       businessId: businessId,
       photoBase64: clearPhoto ? null : (photoBase64 ?? this.photoBase64),
+      photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
       videoName: clearVideo ? null : (videoName ?? this.videoName),
+      videoUrl: clearVideo ? null : (videoUrl ?? this.videoUrl),
+      videoBytes: clearVideo || clearVideoBytes
+          ? null
+          : (videoBytes ?? this.videoBytes),
       voiceSeconds: clearVoice ? null : (voiceSeconds ?? this.voiceSeconds),
       note: clearNote ? null : (note ?? this.note),
       savedAt: savedAt ?? this.savedAt,
       posted: posted ?? this.posted,
       postedPlatform: postedPlatform ?? this.postedPlatform,
+      renderedVideoUrl: renderedVideoUrl ?? this.renderedVideoUrl,
+      renderedCaption: renderedCaption ?? this.renderedCaption,
+      renderedHashtags: renderedHashtags ?? this.renderedHashtags,
+      renderedScript: renderedScript ?? this.renderedScript,
     );
   }
 
   factory StopDraft.fromJson(Map<String, dynamic> j) => StopDraft(
         businessId: j['businessId'] as int,
         photoBase64: j['photoBase64'] as String?,
+        photoUrl: j['photoUrl'] as String?,
         videoName: j['videoName'] as String?,
+        videoUrl: j['videoUrl'] as String?,
+        // videoBytes intentionally not persisted
         voiceSeconds: j['voiceSeconds'] as int?,
         note: j['note'] as String?,
         savedAt: j['savedAt'] != null
@@ -76,17 +116,29 @@ class StopDraft {
             : null,
         posted: j['posted'] as bool? ?? false,
         postedPlatform: j['postedPlatform'] as String?,
+        renderedVideoUrl: j['renderedVideoUrl'] as String?,
+        renderedCaption: j['renderedCaption'] as String?,
+        renderedHashtags: (j['renderedHashtags'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList(),
+        renderedScript: j['renderedScript'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
         'businessId': businessId,
         'photoBase64': photoBase64,
+        'photoUrl': photoUrl,
         'videoName': videoName,
+        'videoUrl': videoUrl,
         'voiceSeconds': voiceSeconds,
         'note': note,
         'savedAt': savedAt?.toIso8601String(),
         'posted': posted,
         'postedPlatform': postedPlatform,
+        'renderedVideoUrl': renderedVideoUrl,
+        'renderedCaption': renderedCaption,
+        'renderedHashtags': renderedHashtags,
+        'renderedScript': renderedScript,
       };
 }
 
@@ -207,6 +259,31 @@ class ScriptStep {
             const [],
       );
 
+  /// Parse a step from POST /api/scripts (businessId is a string slug).
+  factory ScriptStep.fromApiJson(Map<String, dynamic> j) {
+    final rawId = j['businessId'];
+    final businessId = rawId is int
+        ? rawId
+        : businessIdForApiId(rawId?.toString() ?? '');
+    return ScriptStep(
+      businessId: businessId,
+      sceneTitle: j['sceneTitle'] as String? ?? 'SCENE',
+      direction: j['direction'] as String? ?? '',
+      line: j['line'] as String? ?? '',
+      perkCallout: j['perkCallout'] as String?,
+      actions: (j['actions'] as List<dynamic>?)
+              ?.map((e) => ScriptAction.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+      locationTitle: j['locationTitle'] as String?,
+      locationBody: j['locationBody'] as String?,
+      blocks: (j['blocks'] as List<dynamic>?)
+              ?.map((e) => SceneBlock.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'businessId': businessId,
         'sceneTitle': sceneTitle,
@@ -240,11 +317,14 @@ class StrollState {
   final List<int> stopIds;
   final Map<int, StopDraft> drafts;
   final String templateId;
+  /// Script from POST /api/scripts (or local mock). Empty → regenerate locally.
+  final List<ScriptStep> steps;
 
   const StrollState({
     this.stopIds = const [],
     this.drafts = const {},
     this.templateId = 'doku',
+    this.steps = const [],
   });
 
   bool get active => stopIds.isNotEmpty;
@@ -269,11 +349,13 @@ class StrollState {
     List<int>? stopIds,
     Map<int, StopDraft>? drafts,
     String? templateId,
+    List<ScriptStep>? steps,
   }) =>
       StrollState(
         stopIds: stopIds ?? this.stopIds,
         drafts: drafts ?? this.drafts,
         templateId: templateId ?? this.templateId,
+        steps: steps ?? this.steps,
       );
 
   factory StrollState.fromJson(Map<String, dynamic> j) => StrollState(
@@ -285,12 +367,17 @@ class StrollState {
           ),
         ),
         templateId: j['templateId'] as String? ?? 'doku',
+        steps: (j['steps'] as List<dynamic>?)
+                ?.map((e) => ScriptStep.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            const [],
       );
 
   Map<String, dynamic> toJson() => {
         'stopIds': stopIds,
         'drafts': drafts.map((k, v) => MapEntry(k.toString(), v.toJson())),
         'templateId': templateId,
+        'steps': steps.map((s) => s.toJson()).toList(),
       };
 }
 
@@ -298,6 +385,14 @@ MapBusiness businessById(int id) => kSampleBusinesses.firstWhere(
       (b) => b.id == id,
       orElse: () => kSampleBusinesses.first,
     );
+
+/// Map backend slug / numeric string → local pin id.
+int businessIdForApiId(String apiId) {
+  for (final b in kSampleBusinesses) {
+    if (b.backendId == apiId || b.id.toString() == apiId) return b.id;
+  }
+  return int.tryParse(apiId) ?? kSampleBusinesses.first.id;
+}
 
 extension MapBusinessStrollX on MapBusiness {
   int get perkValueEuros {

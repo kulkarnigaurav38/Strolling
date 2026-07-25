@@ -1,15 +1,40 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { config } from "../config";
 
 // Local media plumbing for the render pipeline: normalize every source into a
-// uniform portrait clip, concatenate, and mux narration. Uses the system ffmpeg
-// (no extra runtime dependency).
+// uniform portrait clip, concatenate, and mux narration. Prefers system ffmpeg;
+// falls back to the ffmpeg-static binary when PATH has none.
 
-const run = promisify(execFile);
+const runRaw = promisify(execFile);
+
+function bin(name: "ffmpeg" | "ffprobe"): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require(`${name}-static`) as string | { path?: string } | null;
+    if (typeof mod === "string" && mod) return mod;
+    if (mod && typeof mod === "object" && typeof mod.path === "string") {
+      return mod.path;
+    }
+  } catch {
+    /* package not installed */
+  }
+  return name;
+}
+
+const FFMPEG = bin("ffmpeg");
+const FFPROBE = bin("ffprobe");
+
+async function run(
+  cmd: string,
+  args: string[],
+): Promise<{ stdout: string; stderr: string }> {
+  return runRaw(cmd, args);
+}
 
 export const WIDTH = 1080;
 export const HEIGHT = 1920;
@@ -23,15 +48,47 @@ export async function makeWorkDir(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "strolling-render-"));
 }
 
+/** Map /uploads|/renders|/mock URLs to files under public/, else leave as-is. */
+function localPublicPath(url: string): string | null {
+  try {
+    const pathname = isRemote(url) ? new URL(url).pathname : url;
+    if (pathname.startsWith("/uploads/")) {
+      return path.join(config.uploadsDir, pathname.slice("/uploads/".length));
+    }
+    if (pathname.startsWith("/renders/")) {
+      return path.join(config.rendersDir, pathname.slice("/renders/".length));
+    }
+    if (pathname.startsWith("/mock/")) {
+      return path.join(process.cwd(), "public", "mock", pathname.slice("/mock/".length));
+    }
+  } catch {
+    /* ignore bad URLs */
+  }
+  return null;
+}
+
 export async function download(url: string, dest: string): Promise<string> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`download ${url} → HTTP ${res.status}`);
+  const local = localPublicPath(url);
+  if (local) {
+    await copyFile(local, dest);
+    return dest;
+  }
+  if (!isRemote(url) && path.isAbsolute(url)) {
+    await copyFile(url, dest);
+    return dest;
+  }
+  const resolved =
+    url.startsWith("/") && !isRemote(url)
+      ? `${(config.publicBaseUrl || `http://localhost:${config.port}`).replace(/\/$/, "")}${url}`
+      : url;
+  const res = await fetch(resolved);
+  if (!res.ok) throw new Error(`download ${resolved} → HTTP ${res.status}`);
   await writeFile(dest, Buffer.from(await res.arrayBuffer()));
   return dest;
 }
 
 export async function probeDuration(file: string): Promise<number> {
-  const { stdout } = await run("ffprobe", [
+  const { stdout } = await run(FFPROBE, [
     "-v", "error",
     "-show_entries", "format=duration",
     "-of", "default=noprint_wrappers=1:nokey=1",
@@ -58,10 +115,10 @@ export async function imageToClip(
   const base = ["-y", "-loop", "1", "-i", image, "-t", String(seconds), "-r", String(FPS)];
   const enc = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", out];
   try {
-    await run("ffmpeg", [...base, "-vf", zoomVf, ...enc]);
+    await run(FFMPEG, [...base, "-vf", zoomVf, ...enc]);
   } catch {
     // zoompan can be finicky — fall back to a static (still) clip.
-    await run("ffmpeg", [...base, "-vf", `${COVER(WIDTH, HEIGHT)},format=yuv420p`, ...enc]);
+    await run(FFMPEG, [...base, "-vf", `${COVER(WIDTH, HEIGHT)},format=yuv420p`, ...enc]);
   }
   return out;
 }
@@ -72,7 +129,7 @@ export async function normalizeClip(
   out: string,
   seconds: number,
 ): Promise<string> {
-  await run("ffmpeg", [
+  await run(FFMPEG, [
     "-y", "-i", input, "-t", String(seconds), "-r", String(FPS),
     "-vf", `${COVER(WIDTH, HEIGHT)},format=yuv420p`,
     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", out,
@@ -91,7 +148,7 @@ export async function concat(
     list,
     clips.map((c) => `file '${c.replace(/'/g, "'\\''")}'`).join("\n"),
   );
-  await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", out]);
+  await run(FFMPEG, ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", out]);
   return out;
 }
 
@@ -102,10 +159,10 @@ export async function mux(
   out: string,
 ): Promise<string> {
   if (!audio) {
-    await run("ffmpeg", ["-y", "-i", video, "-c", "copy", out]);
+    await run(FFMPEG, ["-y", "-i", video, "-c", "copy", out]);
     return out;
   }
-  await run("ffmpeg", [
+  await run(FFMPEG, [
     "-y", "-i", video, "-i", audio,
     "-map", "0:v:0", "-map", "1:a:0",
     "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
@@ -119,7 +176,7 @@ export async function sayVoiceover(text: string, out: string): Promise<string | 
   try {
     const aiff = path.join(path.dirname(out), `say-${randomUUID()}.aiff`);
     await run("say", ["-o", aiff, text]);
-    await run("ffmpeg", ["-y", "-i", aiff, "-c:a", "aac", "-b:a", "160k", out]);
+    await run(FFMPEG, ["-y", "-i", aiff, "-c:a", "aac", "-b:a", "160k", out]);
     return out;
   } catch {
     return null; // not macOS / `say` unavailable
@@ -130,7 +187,7 @@ export async function sayVoiceover(text: string, out: string): Promise<string | 
 
 /** Uniform silence (44.1k stereo AAC) — a silent beat for a shot with no script. */
 export async function silence(seconds: number, out: string): Promise<string> {
-  await run("ffmpeg", [
+  await run(FFMPEG, [
     "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
     "-t", String(seconds), "-ar", "44100", "-ac", "2",
     "-c:a", "aac", "-b:a", "160k", out,
@@ -148,7 +205,7 @@ export async function padAndNormalizeAudio(
   const args = ["-y", "-i", input];
   if (padSeconds > 0) args.push("-af", `apad=pad_dur=${padSeconds}`);
   args.push("-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "160k", out);
-  await run("ffmpeg", args);
+  await run(FFMPEG, args);
   return out;
 }
 
@@ -163,7 +220,7 @@ export async function concatAudio(
     list,
     parts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"),
   );
-  await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", out]);
+  await run(FFMPEG, ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", out]);
   return out;
 }
 
@@ -180,13 +237,13 @@ export async function renderClipToDuration(
   const raw = await probeDuration(input);
   const enc = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", out];
   if (target <= raw + 0.06) {
-    await run("ffmpeg", [
+    await run(FFMPEG, [
       "-y", "-i", input, "-t", target.toFixed(3), "-r", String(FPS),
       "-vf", `${COVER(WIDTH, HEIGHT)},format=yuv420p`, ...enc,
     ]);
   } else {
     const pad = (target - raw).toFixed(3);
-    await run("ffmpeg", [
+    await run(FFMPEG, [
       "-y", "-i", input, "-r", String(FPS),
       "-vf",
       `${COVER(WIDTH, HEIGHT)},tpad=stop_mode=clone:stop_duration=${pad},format=yuv420p`,

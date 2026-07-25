@@ -10,6 +10,7 @@ const kMapFilters = ['All', 'Café', 'Food', 'Drinks', 'Culture', 'Market'];
 const kSampleBusinesses = [
   MapBusiness(
     id: 1,
+    apiId: 'brot-roesterei',
     name: 'Brot & Rösterei',
     category: 'Café',
     filterKey: 'Café',
@@ -28,6 +29,7 @@ const kSampleBusinesses = [
   ),
   MapBusiness(
     id: 2,
+    apiId: 'alte-kanzlei',
     name: 'Weinstube Fröhlich',
     category: 'Restaurant',
     filterKey: 'Food',
@@ -46,6 +48,7 @@ const kSampleBusinesses = [
   ),
   MapBusiness(
     id: 3,
+    apiId: 'stadtbibliothek',
     name: 'Schlossplatz',
     category: 'Landmark',
     filterKey: 'Culture',
@@ -60,6 +63,7 @@ const kSampleBusinesses = [
   ),
   MapBusiness(
     id: 4,
+    apiId: 'markthalle',
     name: 'Markthalle Stuttgart',
     category: 'Market',
     filterKey: 'Market',
@@ -78,6 +82,7 @@ const kSampleBusinesses = [
   ),
   MapBusiness(
     id: 5,
+    apiId: 'palmengarten',
     name: 'Galerie am Schloss',
     category: 'Culture',
     filterKey: 'Culture',
@@ -92,6 +97,7 @@ const kSampleBusinesses = [
   ),
   MapBusiness(
     id: 6,
+    apiId: 'biergarten-schlossgarten',
     name: 'Brauhaus am Eck',
     category: 'Bar',
     filterKey: 'Drinks',
@@ -110,6 +116,7 @@ const kSampleBusinesses = [
   ),
   MapBusiness(
     id: 7,
+    apiId: 'weissenburgpark',
     name: 'Stadtgarten Kiosk',
     category: 'Outdoors',
     filterKey: 'Café',
@@ -128,6 +135,7 @@ const kSampleBusinesses = [
   ),
   MapBusiness(
     id: 8,
+    apiId: 'feuersee',
     name: 'The Record Loft',
     category: 'Culture',
     filterKey: 'Culture',
@@ -141,6 +149,25 @@ const kSampleBusinesses = [
     walkMin: 8,
     latLng: LatLng(48.7772, 9.1835),
     imageUrl: 'asset:assets/images/business_record_loft.jpg',
+    hasPerk: true,
+  ),
+  MapBusiness(
+    id: 9,
+    apiId: 'cursor-hackathon',
+    name: 'INFOMOTION GmbH',
+    category: 'Culture',
+    filterKey: 'Culture',
+    desc:
+        'Data & AI consulting in City Gate, Friedrichstr. 6 — right next to the Hauptbahnhof. Innovation Lab on the 4th floor.',
+    perk: 'Free drink at the bar',
+    perkVal: '€8',
+    perkColor: StrollingColors.primary,
+    required: '1 photo + 1 story post',
+    distance: '1 min walk',
+    walkMin: 1,
+    latLng: LatLng(48.7834, 9.1802),
+    imageUrl:
+        'https://images.unsplash.com/photo-1497366216548-37526070297c?w=500&h=320&fit=crop',
     hasPerk: true,
   ),
 ];

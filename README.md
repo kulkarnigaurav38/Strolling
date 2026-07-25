@@ -33,30 +33,44 @@ npm run build && npm start
 | `GET  /health`           | —                                 | `{ ok, mock }`                       | —       |
 | `POST /api/tasks`        | `{ business }`                    | `Task[]` (the 5 shots)               | COMMIT-3 |
 | `POST /api/media/upload` | multipart `file`                  | `{ mediaUrl }`                       | COMMIT-3 |
-| `POST /api/render`       | `{ captures, reviews, business }` | `{ videoUrl }`                       | COMMIT-4 ✅ |
+| `POST /api/render`       | images/video/audio/text/script (or legacy shots) | `{ videoUrl, caption, hashtags, script }` | COMMIT-4 ✅ |
 | `POST /api/publish`      | `{ videoUrl, transcript }`        | `{ postUrl, caption, hashtags }`     | COMMIT-5 |
 
 `/mock/sample.mp4` is served statically so a mocked `videoUrl` actually resolves.
 
 ### Render pipeline (`POST /api/render`)
 
-Turns the creator's **shots** — each a photo/clip plus its own **script part** — into a
-vertical video where each part's voiceover plays over its own shot. Parts are paired to
-photos by `taskId`; each part is cleaned by a fal LLM, voiced by ElevenLabs, and its shot
-is rendered to exactly that narration's length (trim / freeze-frame) so audio and visuals
-stay locked in sync. Real `captures`/`reviews` are used when present; otherwise the mock
-shots stand in (`src/lib/mockAssets.ts`) — **real data always wins**.
+Turns the creator's **media + words** into a **rendered video and a social post**:
 
-- `MOCK=1` (default) → instant `/mock/sample.mp4`. Add `?force=1` to run the pipeline once.
+**In (any mix):** `images[]`, `videoUrl`, `audioUrl`, `text`, `script`, optional `business`  
+(also still accepts legacy `shots` / `captures`+`reviews`)
+
+**Out:** `{ videoUrl, caption, hashtags, script }`
+
+Each photo/clip is paired with script/text for voiceover; optional `audioUrl` is used as a
+whole-video narration track. Parts are cleaned by a fal LLM, voiced by ElevenLabs (when
+keys are set), and each shot is fit to that narration's length. Real media always wins;
+with none, mock shots stand in (`src/lib/mockAssets.ts`).
+
+- `MOCK=1` (default) → instant `/mock/sample.mp4` + generated caption. Add `?force=1` to run once.
 - `MOCK=0` → always runs. With `FAL_KEY` it uses **fal** (image-to-video + storage);
   without a key it falls back to a **local ffmpeg** render (Ken Burns + macOS `say`
   narration), served from `/renders/*`. Requires `ffmpeg`/`ffprobe` on `PATH`.
 
 ```bash
+# mock post package (default MOCK=1):
+curl -s -X POST localhost:3000/api/render -H 'content-type: application/json' -d '{
+  "images": ["https://example.com/cafe.jpg"],
+  "text": "Morning flat white hit different",
+  "script": "We ducked into Cafe X for a quiet espresso.",
+  "business": { "name": "Cafe X", "vibe": "cozy cafe" }
+}'
+# → { "videoUrl": "/mock/sample.mp4", "caption": "...", "hashtags": [...], "script": "..." }
+
 # real pipeline, no keys needed (local ffmpeg + say):
 MOCK=0 npm run dev
 curl -s -X POST localhost:3000/api/render -d '{}' -H 'content-type: application/json'
-# → { "videoUrl": "/renders/render-<uuid>.mp4" }  (GET it to watch)
+# → { "videoUrl": "/renders/render-<uuid>.mp4", "caption": "...", "hashtags": [...], "script": "..." }
 ```
 
 See [CLAUDE.md](./CLAUDE.md#render-pipeline-the-post-creation-workflow--srcservicesrenderpipelinets)

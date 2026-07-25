@@ -26,6 +26,8 @@ export function createApp(): express.Express {
   app.use("/mock", express.static(path.join(__dirname, "..", "public", "mock")));
   // Serve locally-rendered videos (fal-less fallback output).
   app.use("/renders", express.static(config.rendersDir));
+  // Serve locally-persisted captures from POST /api/media/upload.
+  app.use("/uploads", express.static(config.uploadsDir));
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, mock: config.mock });

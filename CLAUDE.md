@@ -39,7 +39,7 @@ integration. This keeps the backend runnable and the frontend unblocked at every
 | **Voiceover — script cleaning** | ✅ REAL (fal LLM) | `src/lib/scriptCleaner.ts` (`FAL_LLM_MODEL`) |
 | **Voiceover — TTS** | ✅ REAL (ElevenLabs) | `src/lib/elevenlabs.ts` (`ELEVENLABS_API_KEY`) |
 | **Render inputs (shots)** | ⚠️ MOCK when absent | send real `captures`+`reviews`; `src/lib/mockAssets.ts` |
-| `POST /api/render` (MOCK=1) | ⚠️ MOCK fast-path | returns `/mock/sample.mp4`; use `?force=1`/`MOCK=0` |
+| `POST /api/render` (MOCK=1) | ⚠️ MOCK fast-path | returns `/mock/sample.mp4` + caption/hashtags/script; use `?force=1`/`MOCK=0` |
 | `POST /api/tasks` | ⚠️ MOCK | Claude — `src/routes/tasks.ts` TODO(COMMIT-3) |
 | `POST /api/media/upload` | ⚠️ MOCK | fal `uploadToStorage` — `src/routes/media.ts` TODO(COMMIT-3) |
 | `POST /api/publish` | ⚠️ MOCK | n8n webhook — `src/routes/publish.ts` TODO(COMMIT-5) |
@@ -90,7 +90,9 @@ The Regisseur voice agent (ElevenLabs) is **COMMIT-2** and lives on the frontend
 ## Render pipeline (the post-creation workflow) — `src/services/renderPipeline.ts`
 
 Turns the creator's **shots** — each a photo/clip plus its own **script part** — into a
-finished vertical video where every part's voiceover plays over its own shot:
+finished vertical video where every part's voiceover plays over its own shot, and returns
+a **post package** (`videoUrl` + `caption` + `hashtags` + `script`). Stroll callers can also
+send `{ images, videoUrl, audioUrl, text, script }` instead of legacy captures/reviews.
 
 ```
 shot i:  photo  → fal image-to-video ┐  clip fit to |audio_i|

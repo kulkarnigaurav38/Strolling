@@ -1,8 +1,13 @@
 import { Router } from "express";
 import { config } from "../config";
 import { MOCK_SHOTS } from "../lib/mockAssets";
+import { buildPostPackage } from "../lib/postPackage";
 import * as supabase from "../lib/supabase";
-import type { RenderRequest, RenderResult } from "../lib/types";
+import type {
+  RenderRequest,
+  RenderResult,
+  StrollRenderPart,
+} from "../lib/types";
 import { processJobById } from "../services/jobWorker";
 import { renderVideo, type RenderInput, type Shot } from "../services/renderPipeline";
 
@@ -15,19 +20,16 @@ export const renderRouter = Router();
 //       minutes), and writes { status, video_url } back to the row. Responds 202
 //       immediately; the frontend watches the row via Supabase Realtime.
 //
-//   Direct payload (testing):   { captures, reviews, business }
-//     → renders synchronously and returns { videoUrl }.
+//   Stroll / direct payload:   { images, videoUrl, audioUrl, text, script }
+//     or { parts: [...] } or legacy { shots } / { captures, reviews, business }
+//     → renders synchronously and returns a post package
+//       { videoUrl, caption, hashtags, script }.
 //
-// Either way the script arrives in PARTS: each review is tied to its capture by
-// `taskId` → a shot. Real creator data always wins; with none, ⚠️ MOCK_SHOTS stand in.
+// Either way the script arrives in PARTS: each part is tied to its media.
+// Real creator data always wins; with none, ⚠️ MOCK_SHOTS stand in.
 renderRouter.post("/", async (req, res, next) => {
   try {
-    const body = (req.body ?? {}) as Partial<RenderRequest> & {
-      jobId?: string;
-      voiceoverUrl?: string;
-      // The simple synchronous shape: pictures + their script parts.
-      shots?: { mediaUrl: string; kind?: "photo" | "clip"; script?: string }[];
-    };
+    const body = (req.body ?? {}) as Partial<RenderRequest>;
 
     // --- Path A: async Supabase job (optional trigger) ---
     // Note: the background worker (services/jobWorker) already auto-renders any
@@ -45,15 +47,18 @@ renderRouter.post("/", async (req, res, next) => {
       return;
     }
 
-    // --- Path B: synchronous "send pictures + scripts → get the video back" ---
-    // The frontend POSTs { shots: [{ mediaUrl, kind, script }] } (or legacy
-    // captures/reviews) and gets { videoUrl } once the render finishes.
-    const shots = shotsFromPayload(body);
+    // --- Path B: synchronous "media + words → post package" ---
+    const { shots, voiceoverUrl, scriptText } = shotsFromPayload(body);
 
-    // ⚠️ MOCK fast-path — ONLY when no real shots were sent (keeps teammates who
-    // just want the response shape unblocked). A real request always renders.
-    if (shots.length === 0 && config.mock && req.query.force === undefined) {
-      const result: RenderResult = { videoUrl: "/mock/sample.mp4" };
+    // ⚠️ MOCK fast-path (default MOCK=1): return a contract-shaped post package
+    // instantly. Use ?force=1 or MOCK=0 to run the real pipeline.
+    if (config.mock && req.query.force === undefined) {
+      const result: RenderResult = buildPostPackage({
+        videoUrl: "/mock/sample.mp4",
+        script: scriptText,
+        text: body.text,
+        business: body.business,
+      });
       res.json(result);
       return;
     }
@@ -61,14 +66,20 @@ renderRouter.post("/", async (req, res, next) => {
     const input: RenderInput = {
       shots: shots.length > 0 ? shots : MOCK_SHOTS,
       business: body.business,
-      voiceoverUrl: body.voiceoverUrl,
+      voiceoverUrl,
     };
-    const { videoUrl, usedFal, voiceoverEngine } = await renderVideo(input);
+    const { videoUrl, usedFal, voiceoverEngine, cleanedScript } =
+      await renderVideo(input);
     res.setHeader("x-render-engine", usedFal ? "fal" : "ffmpeg-local");
     res.setHeader("x-render-inputs", shots.length > 0 ? "creator" : "mock");
     res.setHeader("x-render-shots", String(input.shots.length));
     res.setHeader("x-voiceover-engine", voiceoverEngine);
-    const result: RenderResult = { videoUrl };
+    const result: RenderResult = buildPostPackage({
+      videoUrl,
+      script: cleanedScript || scriptText,
+      text: body.text,
+      business: body.business,
+    });
     res.json(result);
   } catch (err) {
     next(err);
@@ -76,23 +87,67 @@ renderRouter.post("/", async (req, res, next) => {
 });
 
 /**
- * Build shots from the request. Preferred shape is a direct `shots` array
- * ({ mediaUrl, kind, script }); legacy callers can still send captures + reviews
- * paired by taskId.
+ * Build shots from the request. Preferred stroll shapes:
+ *   1. parts[] — one entry per scene (images / video / audio / text / script)
+ *   2. flat { images, videoUrl, audioUrl, text, script }
+ *   3. shots[] — already paired { mediaUrl, kind, script }
+ *   4. legacy captures + reviews paired by taskId
  */
-function shotsFromPayload(
-  body: Partial<RenderRequest> & {
-    shots?: { mediaUrl: string; kind?: "photo" | "clip"; script?: string }[];
-  },
-): Shot[] {
+function shotsFromPayload(body: Partial<RenderRequest>): {
+  shots: Shot[];
+  voiceoverUrl?: string;
+  scriptText: string;
+} {
   // Preferred: pictures + their script parts, already paired.
   if (Array.isArray(body.shots) && body.shots.length > 0) {
-    return body.shots
+    const shots = body.shots
       .filter((s) => s && s.mediaUrl)
       .map((s) => ({
-        media: { url: s.mediaUrl, kind: s.kind === "clip" ? "clip" : "photo" },
+        media: {
+          url: s.mediaUrl,
+          kind: (s.kind === "clip" ? "clip" : "photo") as "photo" | "clip",
+        },
         script: (s.script ?? "").trim(),
       }));
+    return {
+      shots,
+      voiceoverUrl: body.voiceoverUrl ?? body.audioUrl,
+      scriptText: shots.map((s) => s.script).filter(Boolean).join(" "),
+    };
+  }
+
+  // Multi-stop stroll parts.
+  if (Array.isArray(body.parts) && body.parts.length > 0) {
+    const shots: Shot[] = [];
+    const scripts: string[] = [];
+    let voiceoverUrl = body.voiceoverUrl;
+    for (const part of body.parts) {
+      const { partShots, partVoice, partScript } = shotsFromPart(part);
+      shots.push(...partShots);
+      if (partScript) scripts.push(partScript);
+      if (!voiceoverUrl && partVoice) voiceoverUrl = partVoice;
+    }
+    return {
+      shots,
+      voiceoverUrl,
+      scriptText: scripts.join(" ") || (body.script ?? body.text ?? "").trim(),
+    };
+  }
+
+  // Flat stroll shape: any mix of images / video / audio / text / script.
+  if (hasStrollFields(body)) {
+    const { partShots, partVoice, partScript } = shotsFromPart({
+      images: body.images,
+      videoUrl: body.videoUrl,
+      audioUrl: body.audioUrl,
+      text: body.text,
+      script: body.script,
+    });
+    return {
+      shots: partShots,
+      voiceoverUrl: body.voiceoverUrl ?? partVoice,
+      scriptText: partScript || (body.script ?? body.text ?? "").trim(),
+    };
   }
 
   // Legacy: captures + reviews paired by taskId.
@@ -101,10 +156,57 @@ function shotsFromPayload(
       .filter((r) => r && r.taskId)
       .map((r) => [r.taskId, (r.transcript ?? "").trim()] as [string, string]),
   );
-  return (body.captures ?? [])
+  const shots = (body.captures ?? [])
     .filter((c) => c && c.mediaUrl)
     .map((c) => ({
       media: { url: c.mediaUrl, kind: c.kind },
       script: partByTask.get(c.taskId) ?? "",
     }));
+  return {
+    shots,
+    voiceoverUrl: body.voiceoverUrl ?? body.audioUrl,
+    scriptText: shots.map((s) => s.script).filter(Boolean).join(" "),
+  };
+}
+
+function hasStrollFields(body: Partial<RenderRequest>): boolean {
+  return Boolean(
+    (body.images && body.images.length > 0) ||
+      body.videoUrl ||
+      body.audioUrl ||
+      body.text ||
+      body.script,
+  );
+}
+
+function shotsFromPart(part: StrollRenderPart): {
+  partShots: Shot[];
+  partVoice?: string;
+  partScript: string;
+} {
+  const partScript = (part.script ?? part.text ?? "").trim();
+  const partShots: Shot[] = [];
+
+  for (const url of part.images ?? []) {
+    if (!url) continue;
+    partShots.push({
+      media: { url, kind: "photo" },
+      script: partScript,
+    });
+  }
+  if (part.videoUrl) {
+    partShots.push({
+      media: { url: part.videoUrl, kind: "clip" },
+      script: partScript,
+    });
+  }
+
+  // Audio alone (no visual) → treat as whole-video voiceover; visuals come from
+  // sibling parts / mock shots. Script-only still yields an empty shot list so
+  // the mock fast-path can return a post package without rendering.
+  return {
+    partShots,
+    partVoice: part.audioUrl,
+    partScript,
+  };
 }

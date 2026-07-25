@@ -73,7 +73,12 @@ class _StepScreenState extends State<StepScreen> {
         );
     if (file == null) return;
     final bytes = await file.readAsBytes();
-    _update(_draft.copyWith(photoBase64: base64Encode(bytes)));
+    _update(
+      _draft.copyWith(
+        photoBase64: base64Encode(bytes),
+        photoUrl: null,
+      ),
+    );
   }
 
   Future<void> _pickVideo() async {
@@ -81,7 +86,14 @@ class _StepScreenState extends State<StepScreen> {
     final file = await picker.pickVideo(source: ImageSource.camera) ??
         await picker.pickVideo(source: ImageSource.gallery);
     if (file == null) return;
-    _update(_draft.copyWith(videoName: file.name));
+    final bytes = await file.readAsBytes();
+    _update(
+      _draft.copyWith(
+        videoName: file.name,
+        videoBytes: bytes,
+        videoUrl: null,
+      ),
+    );
   }
 
   void _toggleRecording() {

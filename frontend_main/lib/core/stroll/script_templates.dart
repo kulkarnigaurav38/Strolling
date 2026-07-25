@@ -65,8 +65,37 @@ ScriptTemplate templateById(String id) =>
 
 List<ScriptStep> scriptForStroll(StrollState stroll) {
   if (!stroll.active) return const [];
+  if (stroll.steps.isNotEmpty) {
+    // Live POST /api/scripts may omit blocks/location* — fill from local
+    // templates so the step capture UI isn't empty.
+    return [
+      for (final s in stroll.steps) enrichApiStep(s, stroll.templateId),
+    ];
+  }
   final template = templateById(stroll.templateId);
   return template.generate(stroll.stopIds.map(businessById).toList());
+}
+
+/// Merge API script fields with local scene blocks when the server omits them.
+ScriptStep enrichApiStep(ScriptStep api, String templateId) {
+  if (api.blocks.isNotEmpty &&
+      api.locationTitle != null &&
+      api.locationBody != null) {
+    return api;
+  }
+  final local = templateById(templateId)
+      .generate([businessById(api.businessId)]).first;
+  return ScriptStep(
+    businessId: api.businessId,
+    sceneTitle: api.sceneTitle.isNotEmpty ? api.sceneTitle : local.sceneTitle,
+    direction: api.direction.isNotEmpty ? api.direction : local.direction,
+    line: api.line.isNotEmpty ? api.line : local.line,
+    perkCallout: api.perkCallout ?? local.perkCallout,
+    actions: api.actions.isNotEmpty ? api.actions : local.actions,
+    locationTitle: api.locationTitle ?? local.locationTitle,
+    locationBody: api.locationBody ?? local.locationBody,
+    blocks: api.blocks.isNotEmpty ? api.blocks : local.blocks,
+  );
 }
 
 ScriptStep _scene(ScriptTemplate t, int index, MapBusiness b) {
@@ -247,45 +276,56 @@ String _videoPrompt(ScriptTemplate t) => switch (t.id) {
       _ => 'Hook, whip-pan, reveal — under 7 seconds, loopable.',
     };
 
-({String title, String body}) _location(MapBusiness b) => switch (_key(b)) {
-      'Café' => (
-          title: 'The Bohnenviertel',
-          body:
-              "Stuttgart's oldest residential quarter — the 'bean quarter', named after "
-              'the beans workers grew in their tiny gardens. Walking into it from the '
-              'Königstraße feels like the city took a breath. Everything slows down by '
-              'about a third.',
-        ),
-      'Food' => (
-          title: 'Around Mitte',
-          body:
-              'Swabian cooking lives in these side streets — wood panels, long tables, '
-              'and wine poured without ceremony. The walk from the station already smells '
-              'like broth and roasted onions.',
-        ),
-      'Drinks' => (
-          title: 'Golden hour terrace',
-          body:
-              'When the light hits the courtyard benches, conversations stretch. Locals '
-              'claim tables early; visitors learn to share.',
-        ),
-      'Culture' => (
-          title: 'City stage',
-          body:
-              'Public squares here are designed for lingering. Facades do the talking — '
-              'you just have to give them a clean frame.',
-        ),
-      'Market' => (
-          title: 'The Markthalle',
-          body:
-              'Art Nouveau arches, produce piled high, and a hum that never quite stops. '
-              'Come hungry; leave with a story and a bag.',
-        ),
-      _ => (
-          title: b.category,
-          body: b.desc,
-        ),
-    };
+({String title, String body}) _location(MapBusiness b) {
+  if (b.id == 9) {
+    return (
+      title: 'City Gate · Friedrichstr. 6',
+      body:
+          'INFOMOTION sits in City Gate, steps from the Hauptbahnhof. Data & AI '
+          'consulting downstairs energy; Innovation Lab on the 4th floor. The demo '
+          'stop: walk in, capture the room, walk out with a drink perk.',
+    );
+  }
+  return switch (_key(b)) {
+    'Café' => (
+        title: 'The Bohnenviertel',
+        body:
+            "Stuttgart's oldest residential quarter — the 'bean quarter', named after "
+            'the beans workers grew in their tiny gardens. Walking into it from the '
+            'Königstraße feels like the city took a breath. Everything slows down by '
+            'about a third.',
+      ),
+    'Food' => (
+        title: 'Around Mitte',
+        body:
+            'Swabian cooking lives in these side streets — wood panels, long tables, '
+            'and wine poured without ceremony. The walk from the station already smells '
+            'like broth and roasted onions.',
+      ),
+    'Drinks' => (
+        title: 'Golden hour terrace',
+        body:
+            'When the light hits the courtyard benches, conversations stretch. Locals '
+            'claim tables early; visitors learn to share.',
+      ),
+    'Culture' => (
+        title: 'City stage',
+        body:
+            'Public squares here are designed for lingering. Facades do the talking — '
+            'you just have to give them a clean frame.',
+      ),
+    'Market' => (
+        title: 'The Markthalle',
+        body:
+            'Art Nouveau arches, produce piled high, and a hum that never quite stops. '
+            'Come hungry; leave with a story and a bag.',
+      ),
+    _ => (
+        title: b.category,
+        body: b.desc,
+      ),
+  };
+}
 
 List<SceneBlock> _blocks(ScriptTemplate t, MapBusiness b) {
   // Brot & Rösterei matches the Figma CursorStutt scene beat-for-beat.
@@ -325,6 +365,47 @@ List<SceneBlock> _blocks(ScriptTemplate t, MapBusiness b) {
         capturePrompt:
             'Tell the camera what the place feels like — the smell, the quiet, why '
             'you\'d come back here',
+        captureKind: CaptureAction.voice,
+      ),
+    ];
+  }
+
+  // INFOMOTION GmbH — stage-demo stop (apiId: cursor-hackathon).
+  if (b.id == 9) {
+    return const [
+      SceneBlock.narrative(
+        'You\'re at City Gate, Friedrichstraße 6 — right next to the Hauptbahnhof. '
+        'The glass lobby opens onto elevators; INFOMOTION\'s Innovation Lab is on the '
+        '4th floor. Pause in the lobby before you go up — the building does the talking.',
+      ),
+      SceneBlock.capture(
+        captureTitle: 'CAPTURE — WALK-IN SHOT',
+        capturePrompt:
+            'Film the approach into City Gate: facade → lobby → elevator call. '
+            'One continuous walk-in, no cuts.',
+        captureKind: CaptureAction.video,
+      ),
+      SceneBlock.narrative(
+        'On the 4th floor: laptops, teams, sponsor stickers, city view. This is where '
+        'the Cursor hackathon lives for the day. Find a clean frame of the room before '
+        'the demos start — energy first, polish later.',
+      ),
+      SceneBlock.capture(
+        captureTitle: 'CAPTURE — THE ROOM',
+        capturePrompt:
+            'Photo of the Innovation Lab floor or the window view — natural light, '
+            'no filter. Signage or logo in frame if you can get it clean.',
+        captureKind: CaptureAction.photo,
+      ),
+      SceneBlock.narrative(
+        'The perk is a free drink at the bar when you show your finished video. '
+        'Before you leave, one honest take: what building something here feels like.',
+      ),
+      SceneBlock.capture(
+        captureTitle: 'CAPTURE — YOUR TAKE',
+        capturePrompt:
+            'Tell the camera what INFOMOTION / the hackathon floor feels like — '
+            'one honest take, first try.',
         captureKind: CaptureAction.voice,
       ),
     ];

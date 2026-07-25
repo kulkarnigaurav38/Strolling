@@ -32,6 +32,23 @@ export interface MediaItem {
   kind: "photo" | "clip";
 }
 
+/** localhost / LAN hosts fal.ai can't reach — re-upload those to fal storage. */
+function isPrivateHost(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("192.168.") ||
+      hostname.endsWith(".local")
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** One shot: a photo/clip and the raw script part that belongs to it. */
 export interface Shot {
   media: MediaItem;
@@ -185,23 +202,41 @@ async function generateRawClip(
       ? ff.download(media.url, path.join(work, `src-${randomUUID()}.mp4`))
       : media.url;
   }
-  // Photo + fal → animate it. fal needs a public URL, so upload local stills.
+
+  const stillPath = await ensureLocalStill(media.url, work);
+
+  // Photo + fal → animate it. fal needs a public URL; private/LAN hosts get re-uploaded.
   if (falApi.isFalEnabled()) {
-    const imageUrl = ff.isRemote(media.url)
-      ? media.url
-      : await falApi.uploadToStorage(
-          await readFile(media.url),
-          path.basename(media.url),
+    try {
+      let imageUrl = media.url;
+      if (!ff.isRemote(media.url) || isPrivateHost(media.url)) {
+        imageUrl = await falApi.uploadToStorage(
+          await readFile(stillPath),
+          path.basename(stillPath) || "still.jpg",
         );
-    const prompt = input.business?.style
-      ? `${input.business.style}, subtle cinematic motion`
-      : "subtle cinematic motion, gentle parallax";
-    const clipUrl = await falApi.imageToVideo(imageUrl, { prompt });
-    return ff.download(clipUrl, path.join(work, `fal-${randomUUID()}.mp4`));
+      }
+      const prompt = input.business?.style
+        ? `${input.business.style}, subtle cinematic motion`
+        : "subtle cinematic motion, gentle parallax";
+      const clipUrl = await falApi.imageToVideo(imageUrl, { prompt });
+      return ff.download(clipUrl, path.join(work, `fal-${randomUUID()}.mp4`));
+    } catch (err) {
+      console.warn(
+        "[strolling] fal image-to-video failed, Ken Burns fallback:",
+        (err as Error).message,
+      );
+    }
   }
-  // ⚠️ FALLBACK (no FAL_KEY): a local Ken Burns pan on the still instead of a real
-  // fal image-to-video clip. Set FAL_KEY to get the animated version above.
-  return ff.imageToClip(media.url, path.join(work, `kb-${randomUUID()}.mp4`), 8);
+
+  // ⚠️ FALLBACK (no FAL_KEY / fal error): local Ken Burns pan on the still.
+  return ff.imageToClip(stillPath, path.join(work, `kb-${randomUUID()}.mp4`), 8);
+}
+
+/** Download remote stills so ffmpeg can read them as local files. */
+async function ensureLocalStill(url: string, work: string): Promise<string> {
+  if (!ff.isRemote(url)) return url;
+  const ext = path.extname(new URL(url).pathname) || ".jpg";
+  return ff.download(url, path.join(work, `still-${randomUUID()}${ext}`));
 }
 
 /** Clean + voice one shot's script part; returns the audio and its duration. */

@@ -76,5 +76,10 @@
 		<string>Strolling needs photo library access to attach media to your stroll.</string>
 		<key>NSMicrophoneUsageDescription</key>
 		<string>Strolling needs the microphone for voice notes on your stroll.</string>
+		<key>NSAppTransportSecurity</key>
+		<dict>
+			<key>NSAllowsLocalNetworking</key>
+			<true/>
+		</dict>
 	</dict>
 </plist>

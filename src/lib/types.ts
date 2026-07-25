@@ -50,13 +50,46 @@ export interface GenerateTasksRequest {
   business: Business;
 }
 
-export interface RenderRequest {
-  captures: Capture[];
-  reviews: Review[];
-  business: Business;
+/** One capture part in the stroll render shape (video / audio / text / images). */
+export interface StrollRenderPart {
+  images?: string[];
+  videoUrl?: string;
+  audioUrl?: string;
+  text?: string;
+  script?: string;
 }
+
+/**
+ * POST /api/render body. Preferred stroll shape is a flat mix of
+ * images/videoUrl/audioUrl/text/script (or `parts[]` for multi-stop).
+ * Legacy `shots` / `captures`+`reviews` still work.
+ */
+export interface RenderRequest {
+  captures?: Capture[];
+  reviews?: Review[];
+  business?: Business;
+  /** Preferred paired shots: each mediaUrl + its script part. */
+  shots?: { mediaUrl: string; kind?: "photo" | "clip"; script?: string }[];
+  /** Flat stroll inputs (any mix). */
+  images?: string[];
+  videoUrl?: string;
+  audioUrl?: string;
+  text?: string;
+  script?: string;
+  /** Multi-stop stroll: one entry per scene/part. */
+  parts?: StrollRenderPart[];
+  /** Whole-video narration track (bypasses per-shot TTS). */
+  voiceoverUrl?: string;
+  /** Async Supabase job id. */
+  jobId?: string;
+}
+
+/** Post package returned by POST /api/render. */
 export interface RenderResult {
   videoUrl: string;
+  caption: string;
+  hashtags: string[];
+  script: string;
 }
 
 export interface PublishRequest {
@@ -113,6 +146,15 @@ export interface ScriptAction {
   required: boolean; // required by the perk deliverable — gates posting
 }
 
+/** Narrative beat or inline capture card on the step screen. */
+export interface SceneBlock {
+  kind: "narrative" | "capture";
+  narrative?: string;
+  captureTitle?: string;
+  capturePrompt?: string;
+  captureKind?: CaptureAction;
+}
+
 export interface ScriptStep {
   businessId: string;
   sceneTitle: string; // "SCENE 2 · THE MARKET HALL, SYMMETRICAL"
@@ -120,6 +162,11 @@ export interface ScriptStep {
   line: string; // line to deliver (voice/caption seed)
   perkCallout: string | null; // "Deliver 1 photo + 1 story → 2 free coffees (€7)"
   actions: ScriptAction[];
+  /** Area overview shown above capture blocks (Flutter step UI). */
+  locationTitle?: string | null;
+  locationBody?: string | null;
+  /** Ordered narrative + capture cards; empty → client fills from local templates. */
+  blocks?: SceneBlock[];
 }
 
 export interface ScriptTemplateInfo {

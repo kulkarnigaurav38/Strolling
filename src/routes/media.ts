@@ -1,39 +1,62 @@
 import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { Router } from "express";
 import multer from "multer";
 import { config } from "../config";
+import * as falApi from "../lib/fal";
 import type { UploadResult } from "../lib/types";
 
 export const mediaRouter = Router();
 
-// Keep bytes in memory — in mock we don't persist; the real handler streams
-// straight to fal storage.
+// Keep bytes in memory, then persist to fal (preferred) or local /uploads.
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB (short clips)
 });
 
+function publicUrl(relPath: string): string {
+  const base = config.publicBaseUrl || `http://localhost:${config.port}`;
+  return `${base.replace(/\/$/, "")}${relPath}`;
+}
+
+/** Persist capture bytes so /api/render can fetch them. Prefer fal (public URL
+ *  reachable by Kling); fall back to local /uploads for keyless / offline. */
+async function persistUpload(
+  buffer: Buffer,
+  originalname: string,
+): Promise<string> {
+  const safeName = originalname.replace(/[^\w.\-]/g, "_") || "capture.bin";
+  const filename = `${randomUUID()}-${safeName}`;
+
+  if (falApi.isFalEnabled()) {
+    try {
+      return await falApi.uploadToStorage(buffer, filename);
+    } catch (err) {
+      console.warn(
+        "[strolling] fal upload failed, falling back to local:",
+        (err as Error).message,
+      );
+    }
+  }
+
+  await mkdir(config.uploadsDir, { recursive: true });
+  await writeFile(path.join(config.uploadsDir, filename), buffer);
+  return publicUrl(`/uploads/${filename}`);
+}
+
 // POST /api/media/upload  (multipart/form-data, field "file") → { mediaUrl }
-mediaRouter.post("/upload", upload.single("file"), async (req, res) => {
-  if (!req.file) {
-    res.status(400).json({ error: "no_file", hint: "send multipart field 'file'" });
-    return;
-  }
+mediaRouter.post("/upload", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: "no_file", hint: "send multipart field 'file'" });
+      return;
+    }
 
-  if (config.mock) {
-    // ⚠️ MOCK: fabricated storage URL — the bytes are NOT persisted anywhere.
-    // TODO(COMMIT-3) REPLACE WITH the real fal upload. lib/fal.ts already has it, so
-    // this is a two-line swap:
-    //   import { uploadToStorage } from "../lib/fal";
-    //   const mediaUrl = await uploadToStorage(req.file.buffer, req.file.originalname);
-    const id = randomUUID();
-    const safeName = req.file.originalname.replace(/[^\w.\-]/g, "_");
-    const result: UploadResult = {
-      mediaUrl: `https://mock.storage/strolling/${id}-${safeName}`,
-    };
+    const mediaUrl = await persistUpload(req.file.buffer, req.file.originalname);
+    const result: UploadResult = { mediaUrl };
     res.json(result);
-    return;
+  } catch (err) {
+    next(err);
   }
-
-  res.status(501).json({ error: "not_implemented", route: "media/upload" });
 });

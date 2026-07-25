@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/api/api_client.dart';
 import '../../../core/models/map_business.dart';
 import '../../../core/stroll/script_templates.dart';
 import '../../../core/stroll/stroll_controller.dart';
@@ -27,14 +28,29 @@ class _TemplatePickerScreenState extends State<TemplatePickerScreen> {
 
   Future<void> _writeScript() async {
     setState(() => _writing = true);
-    // Brief mock delay so the CTA feels intentional.
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    if (!mounted) return;
-    StrollScope.of(context, listen: false).start(
-      widget.stopIds,
-      templateId: _selected,
-    );
-    context.pop(true);
+    try {
+      final steps = await apiClient.generateScript(
+        stopIds: widget.stopIds,
+        templateId: _selected,
+      );
+      if (!mounted) return;
+      StrollScope.of(context, listen: false).start(
+        widget.stopIds,
+        templateId: _selected,
+        steps: steps,
+      );
+      context.pop(true);
+    } catch (_) {
+      if (!mounted) return;
+      // Offline / API down → still start with the local template generator.
+      StrollScope.of(context, listen: false).start(
+        widget.stopIds,
+        templateId: _selected,
+      );
+      context.pop(true);
+    } finally {
+      if (mounted) setState(() => _writing = false);
+    }
   }
 
   @override
