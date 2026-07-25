@@ -1,53 +1,66 @@
-# FERNWEH 🎬
+# Strolling 🚶
 
-**Walk in. Talk for 20 minutes. Walk out with a published video.**
+**Walk the city. Get rewarded.**
 
-A guided micro-shoot: der Regisseur (a warm German film director) walks a first-time
-creator through five shots of a place, interviews them about each, then cuts, captions,
-and publishes a vertical mini-doc. Built for the Cursor Hackathon Stuttgart.
+The Flutter client for Strolling, matching the Figma Make design
+([CursorStutt](https://www.figma.com/make/1fpV6kfWgSY2WZrSc66nP1/CursorStutt), v5):
+pick businesses on a Stuttgart map, get a **themed shooting script** for your stroll,
+capture photo/video/voice/text at each stop, publish per-stop posts, earn perks.
 
----
+Everything external is **mocked and runs with zero keys**. The only real hardware is
+the camera/file picker.
 
-## Commit 1 — the skeleton (tracer bullet)
+## The flow
 
-This commit makes the **entire creator flow clickable on a phone with every external
-service mocked**. It runs with **zero keys**. The only real hardware is the camera. Every
-later commit swaps exactly one mock for one real integration — grep the tree for
-`TODO(COMMIT-n)` to see each seam.
+**Onboarding** (mock social login) → **Map** (mode switch Roam/Earn, category chips,
+perk pins, business sheet, 2+ stops → cart) → **Pick your script style** →
+**My Stroll** (scene timeline + totals) → **Step screen** (script card + the three
+capture cards) → **Post builder** (AI caption, platform selector) → **Perks wallet**
+(pending → approved → redeemed, QR).
 
-Flow: **Brief → Shoot (×5) → Interview → Render → Done**, state-driven end to end.
+## Script templates
 
-## Stack
+`lib/core/script_templates.dart` turns the user's picks into a per-stop shooting
+script. Each scene has a themed title, staging direction, a line to deliver, the perk
+deliverable woven in, and **the capture actions to open** (📸 🎬 🎙️ ✍️). Actions
+required by a perk deliverable ("1 photo + 1 story post") gate the Post button.
 
-- **Flutter 3.x / Dart**, portrait-only
-- **go_router** — routes are a projection of the session status (`lib/core/router.dart`)
-- **Riverpod + shared_preferences** — one `SessionController`, persisted so a mid-shoot
-  restart resumes exactly where you left off
-- **dio** — a single `ApiClient` (`lib/core/api/`)
-- **camera** — live `CameraPreview` with a `Stack` overlay of shot guidance
-- **video_player** — plays the (mocked) rendered film
-- **permission_handler** — camera + mic requested on first launch
-- One `ThemeData` (`lib/core/theme.dart`), no visible Material defaults
+| Template | Vibe |
+| --- | --- |
+| 🎀 The Symmetrist (à la Wes Anderson) | pastel, dead-center framing, deadpan captions |
+| 🔴 One-Point Stare (à la Kubrick) | one-point perspective, slow push-ins |
+| 🎙️ Der Doku | honest handheld documentary, interview yourself |
+| ⚡ Whatever's Viral | hook in 0.5s, whip-pans, POV captions |
+
+The generator is pure Dart — a later commit swaps it for Claude without touching
+any screen.
+
+## Stack notes
+
+- **Map**: `flutter_map` + OpenStreetMap tiles (no API key), businesses at real
+  Stuttgart coordinates; journey header is a non-interactive mini-map with the
+  route polyline.
+- **Type**: SF Pro Text (bundled from this Mac's installed Apple fonts —
+  fine for the demo; check licensing before shipping). No emoji in UI chrome —
+  CupertinoIcons (SF-symbol style) + Material rounded icons.
+- **Backend wire**: run with `--dart-define=STROLLING_MOCK=false
+  --dart-define=API_BASE_URL=http://localhost:3000` and scripts come from
+  `POST /api/scripts` (local generator is the offline fallback).
 
 ## Run
 
-Prereqs: Flutter 3.27+ and a device/emulator (or Chrome for web). Verified on
-Flutter 3.44 / Dart 3.12.
+Prereqs: Flutter 3.27+ and a device/emulator (or Chrome for web).
 
 ```bash
 # 1. Generate the platform folders (kept out of git — see .gitignore).
-#    This does not touch lib/ or pubspec.yaml.
 flutter create --platforms=android,ios,web .
 
-# 2. Add the platform permissions below (Android manifest + iOS Info.plist), then:
+# 2. Add platform permissions below (camera), then:
 flutter pub get
 
 # 3. Run — no keys needed, everything is mocked.
-flutter run
-
-# Ship:
-flutter build apk --release
-flutter build web
+flutter run                      # device / Chrome
+flutter run -d web-server --web-port 8080   # any browser
 ```
 
 ### Platform permissions (add after `flutter create .`)
@@ -60,64 +73,40 @@ flutter build web
 <uses-permission android:name="android.permission.INTERNET" />
 ```
 
-Set `minSdkVersion` to at least `21` in `android/app/build.gradle`.
-
 **ios/Runner/Info.plist**:
 
 ```xml
 <key>NSCameraUsageDescription</key>
-<string>Fernweh uses the camera to shoot your mini-doc.</string>
+<string>Strolling uses the camera to shoot your stops.</string>
 <key>NSMicrophoneUsageDescription</key>
-<string>Fernweh records your voice for the video.</string>
+<string>Strolling records voice notes at your stops.</string>
 ```
 
-## The mock flag
-
-The whole app is gated by `Config.mock` (`lib/core/config.dart`), which defaults **on**
-so it runs with no credentials. Override at build time:
-
-```bash
-# turn the master mock OFF (later commits wire real backends per route)
-flutter run --dart-define=FERNWEH_MOCK=false
-
-# or load everything from a file (copy the example first)
-cp dart_defines.example.json dart_defines.json
-flutter run --dart-define-from-file=dart_defines.json
-```
-
-## Project structure
+## Structure
 
 ```
 lib/
-  main.dart                     app entry, portrait lock, first-launch permissions
-  core/                         shared across features
-    models.dart                 the contract (Task, Capture, Review, ShootSession, …)
-    seed.dart  copy.dart        business + shot list + UI copy (verbatim from the brief)
-    director.dart               DIRECTOR_SYSTEM_PROMPT (version-controlled persona)
-    config.dart  theme.dart  router.dart
-    api/api_client.dart         single dio ApiClient (mocked)
-    session/session_controller.dart   Riverpod + shared_preferences
-    widgets/                    AppScaffold, PrimaryButton, Pill, Panel, local_image
+  main.dart                     entry, portrait lock
+  core/
+    models.dart                 Business, StopDraft, Perk, CaptureAction
+    seed.dart                   Stuttgart businesses + mock AI captions
+    script_templates.dart       the template engine (4 themed templates)
+    state.dart                  Riverpod: auth, mode, cart, stroll, perks (persisted)
+    theme.dart  copy.dart  router.dart
   features/
-    brief/screens/              BriefScreen
-    shoot/{screens,widgets}/    camera + TaskCard + ProgressPips + ShutterButton
-    interview/{screens,widgets} InterviewPanel + DirectorWidget (mock typewriter)
-    render/screens/             RenderScreen
-    done/screens/               DoneScreen (video + caption + payoff)
-assets/mock/sample.mp4          stand-in rendered film
+    onboarding/                 sunset hero + social logins
+    map/                        painter, pins, mode switch, business sheet
+    template/                   script style picker
+    journey/                    stroll timeline + totals
+    step/                       script card + photo/video + voice + note cards
+    post/                       per-stop post builder
+    perks/  profile/  shell/    wallet, stats, bottom nav
 ```
 
-## Commit roadmap
+## Mocks → real (future commits)
 
-| Commit | Replaces the mock in… | With |
-| ------ | --------------------- | ---- |
-| **2** | `DirectorWidget` | ElevenLabs conversational WebSocket (`web_socket_channel`); WebView of the React widget as fallback |
-| **3** | `ApiClient.generateTasks`, `uploadMedia` | Claude task generation + fal storage |
-| **4** | `ApiClient.render` | fal i2v + ffmpeg compose, real-voice narration |
-| **5** | `ApiClient.publish` | n8n webhook → YouTube Short |
-| **6** | — | venue shoot + polish |
-
-## Not in this commit
-
-Real agent audio, fal/LLM/n8n calls, GPS checks, style picker UI, business onboarding,
-auth, DB.
+- Social login → real OAuth
+- `draftCaption()` + `script_templates.dart` → Claude generation via the backend
+- Voice recorder → real recording
+- Publish → backend `/api/publish` → n8n → socials
+- Map → real map tiles + GPS

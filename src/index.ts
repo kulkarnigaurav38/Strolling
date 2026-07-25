@@ -3,9 +3,11 @@ import cors from "cors";
 import express from "express";
 import { config } from "./config";
 import { errorHandler } from "./middleware/errorHandler";
+import { businessesRouter } from "./routes/businesses";
 import { mediaRouter } from "./routes/media";
 import { publishRouter } from "./routes/publish";
 import { renderRouter } from "./routes/render";
+import { scriptsRouter } from "./routes/scripts";
 import { tasksRouter } from "./routes/tasks";
 
 export function createApp(): express.Express {
@@ -25,6 +27,8 @@ export function createApp(): express.Express {
   app.use("/api/render", renderRouter);
   app.use("/api/publish", publishRouter);
   app.use("/api/media", mediaRouter);
+  app.use("/api/businesses", businessesRouter);
+  app.use("/api/scripts", scriptsRouter);
 
   app.use(errorHandler);
   return app;

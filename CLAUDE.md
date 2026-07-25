@@ -87,12 +87,14 @@ gitignored — never commit real keys.
 
 ## Frontend (`frontend/`)
 
-Flutter (Dart) tracer-bullet client that realizes the same product. It is currently
-**fully mocked** (runs with zero backend) — its `ApiClient` returns local mock data. Wiring
-it to this backend (set `FERNWEH_MOCK=false` and point the API base URL at the server) is
-future work. Build/tooling notes live in `frontend/README.md`. It uses relative imports,
-Riverpod + go_router, and one `ThemeData`. Platform folders are git-ignored and regenerated
-with `flutter create .` — see that README.
+Flutter (Dart) client, rebuilt to match the **Strolling** Figma Make design
+(map → pick stops → themed script templates → per-stop capture → post → perks).
+It is currently **fully mocked** (runs with zero backend). Wiring it to this backend
+is future work — note the backend contract below still reflects the earlier Fernweh
+mini-doc concept and needs realigning (per-stop publish + script generation instead
+of one rendered film). Build/tooling notes live in `frontend/README.md`. It uses
+relative imports, Riverpod + go_router, and one `ThemeData`. Platform folders are
+git-ignored and regenerated with `flutter create .` — see that README.
 
 ## Conventions
 

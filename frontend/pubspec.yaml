@@ -1,12 +1,9 @@
+# NOTE: package name stays `fernweh` — the generated platform folders reference
+# it and renaming buys nothing at this stage. The app itself is Strolling.
 name: fernweh
-description: "Walk in. Talk for 20 minutes. Walk out with a published video."
+description: "Strolling — walk the city, get rewarded."
 publish_to: "none"
-version: 0.1.0+1
-
-# Commit 1 — the skeleton (tracer bullet). The ENTIRE creator flow is clickable on a
-# phone with every external service mocked. Runs with ZERO keys (FERNWEH_MOCK defaults
-# on). The only real hardware is the camera. Each later commit swaps one mock for one
-# real integration — search for `TODO(COMMIT-n)`.
+version: 0.2.0+1
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -16,27 +13,24 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # routing — status-driven redirects (see lib/core/router.dart)
+  # routing — bottom-nav shell + pushed step/post flows (lib/core/router.dart)
   go_router: ^14.6.2
 
-  # state + persistence
+  # state + persistence (stroll drafts survive restarts — v5 "save & resume")
   flutter_riverpod: ^2.6.1
   shared_preferences: ^2.3.3
 
-  # networking — single ApiClient
+  # the real city map (OpenStreetMap tiles, no key needed)
+  flutter_map: ^8.1.1
+  latlong2: ^0.9.1
+
+  # photo/video capture on the step screen (camera on device, picker on web)
+  image_picker: ^1.1.2
+
+  # backend client — POST /api/scripts when STROLLING_MOCK=false
   dio: ^5.7.0
 
-  # the one real piece of hardware in commit 1
-  camera: ^0.11.0+2
-  permission_handler: ^11.3.1
-
-  # playback of the (mocked) rendered film + captured clips
-  video_player: ^2.9.2
-
   cupertino_icons: ^1.0.8
-
-  # COMMIT-2 voice will add: web_socket_channel (ElevenLabs conversational WS)
-  #   and webview_flutter (React widget fallback). Not needed while voice is mocked.
 
 dev_dependencies:
   flutter_test:
@@ -47,3 +41,17 @@ flutter:
   uses-material-design: true
   assets:
     - assets/mock/sample.mp4
+  # SF Pro Text, bundled from this Mac's installed Apple fonts (demo use).
+  fonts:
+    - family: SF Pro
+      fonts:
+        - asset: assets/fonts/SF-Pro-Text-Regular.otf
+          weight: 400
+        - asset: assets/fonts/SF-Pro-Text-Medium.otf
+          weight: 500
+        - asset: assets/fonts/SF-Pro-Text-Semibold.otf
+          weight: 600
+        - asset: assets/fonts/SF-Pro-Text-Bold.otf
+          weight: 700
+        - asset: assets/fonts/SF-Pro-Text-Heavy.otf
+          weight: 800

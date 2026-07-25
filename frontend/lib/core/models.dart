@@ -1,222 +1,297 @@
-// The contract. Ported verbatim from the commit-1 brief's lib/types.ts.
-// Every screen and the ApiClient speak these types so integrations can be swapped
-// one at a time without touching the UI.
+// The contract for the Strolling app (Figma Make "CursorStutt" v5).
+// Businesses offer perks for posting; a stroll is an ordered cart of stops;
+// each stop collects up to three captures and can publish one post.
 
-enum TaskType { photo, clip }
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 
-TaskType taskTypeFromString(String s) =>
-    s == 'clip' ? TaskType.clip : TaskType.photo;
+import 'theme.dart';
 
-String taskTypeToJson(TaskType t) => t == TaskType.clip ? 'clip' : 'photo';
+enum BusinessCategory { cafe, food, drinks, culture, market }
 
-enum SessionStatus { brief, shooting, interview, rendering, done }
+extension BusinessCategoryX on BusinessCategory {
+  String get label => switch (this) {
+        BusinessCategory.cafe => 'Café',
+        BusinessCategory.food => 'Food',
+        BusinessCategory.drinks => 'Drinks',
+        BusinessCategory.culture => 'Culture',
+        BusinessCategory.market => 'Market',
+      };
 
-SessionStatus sessionStatusFromString(String s) =>
-    SessionStatus.values.firstWhere(
-      (e) => e.name == s,
-      orElse: () => SessionStatus.brief,
-    );
+  IconData get icon => switch (this) {
+        BusinessCategory.cafe => Icons.local_cafe_rounded,
+        BusinessCategory.food => Icons.restaurant_rounded,
+        BusinessCategory.drinks => Icons.sports_bar_rounded,
+        BusinessCategory.culture => Icons.park_rounded,
+        BusinessCategory.market => Icons.storefront_rounded,
+      };
 
-class Task {
+  Color get color => switch (this) {
+        BusinessCategory.cafe => AppColors.amber,
+        BusinessCategory.food => AppColors.coral,
+        BusinessCategory.drinks => AppColors.indigo,
+        BusinessCategory.culture => AppColors.leaf,
+        BusinessCategory.market => AppColors.green,
+      };
+}
+
+class Business {
   final String id;
-  final String title; // "📸 Entrance sign, low angle"
-  final TaskType type;
-  final String instruction; // one concrete framing instruction
-  final String
-      suggestedLine; // a line the Regisseur offers so nobody improvises
-  final int order;
+  final String name;
+  final BusinessCategory category;
+  final String description;
+  final int walkMinutes;
+  final double rating;
+  // Real-world position (WGS84).
+  final double lat;
+  final double lng;
+  // Perk — null means a roam-only place (grey pin, no obligations).
+  final String? perkTitle; // "2 free coffees"
+  final int? perkValue; // € 7
+  final String? deliverable; // "1 photo + 1 story post"
+  final String narration; // script snippet read at this stop
 
-  const Task({
+  const Business({
     required this.id,
-    required this.title,
-    required this.type,
-    required this.instruction,
-    required this.suggestedLine,
-    required this.order,
+    required this.name,
+    required this.category,
+    required this.description,
+    required this.walkMinutes,
+    required this.rating,
+    required this.lat,
+    required this.lng,
+    required this.narration,
+    this.perkTitle,
+    this.perkValue,
+    this.deliverable,
   });
 
-  factory Task.fromJson(Map<String, dynamic> j) => Task(
-        id: j['id'] as String,
-        title: j['title'] as String,
-        type: taskTypeFromString(j['type'] as String),
-        instruction: j['instruction'] as String,
-        suggestedLine: j['suggestedLine'] as String,
-        order: j['order'] as int,
-      );
+  bool get hasPerk => perkTitle != null;
+}
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'type': taskTypeToJson(type),
-        'instruction': instruction,
-        'suggestedLine': suggestedLine,
-        'order': order,
+/// Draft captures for one stop — all three are independent (v5: "you can fill
+/// all three, any two, or just one"). Persisted so a stroll survives restarts.
+class StopDraft {
+  final String businessId;
+  final String? photoBase64; // captured photo, inline for simple persistence
+  final String? videoName; // captured clip (name only — no bytes persisted)
+  final int? voiceSeconds; // length of the (mock) voice note
+  final String? note;
+  final DateTime? savedAt;
+  final bool posted;
+  final String? postedPlatform; // instagram | tiktok | facebook
+
+  const StopDraft({
+    required this.businessId,
+    this.photoBase64,
+    this.videoName,
+    this.voiceSeconds,
+    this.note,
+    this.savedAt,
+    this.posted = false,
+    this.postedPlatform,
+  });
+
+  bool get hasPhoto => photoBase64 != null;
+  bool get hasVideo => videoName != null;
+  bool get hasVoice => voiceSeconds != null;
+  bool get hasNote => note != null && note!.trim().isNotEmpty;
+  bool get hasAnyCapture => hasPhoto || hasVideo || hasVoice || hasNote;
+
+  bool has(CaptureAction action) => switch (action) {
+        CaptureAction.photo => hasPhoto,
+        CaptureAction.video => hasVideo,
+        CaptureAction.voice => hasVoice,
+        CaptureAction.text => hasNote,
       };
-}
 
-class Capture {
-  final String taskId;
-  final String mediaUrl; // local file path in mock; fal storage URL later
-  final TaskType kind;
-
-  const Capture({
-    required this.taskId,
-    required this.mediaUrl,
-    required this.kind,
-  });
-
-  factory Capture.fromJson(Map<String, dynamic> j) => Capture(
-        taskId: j['taskId'] as String,
-        mediaUrl: j['mediaUrl'] as String,
-        kind: taskTypeFromString(j['kind'] as String),
-      );
-
-  Map<String, dynamic> toJson() => {
-        'taskId': taskId,
-        'mediaUrl': mediaUrl,
-        'kind': taskTypeToJson(kind),
-      };
-}
-
-class Review {
-  final String taskId;
-  final String transcript; // what the creator said about this shot/place
-  final String summary; // 1-sentence summary (agent-provided later)
-
-  const Review({
-    required this.taskId,
-    required this.transcript,
-    required this.summary,
-  });
-
-  factory Review.fromJson(Map<String, dynamic> j) => Review(
-        taskId: j['taskId'] as String,
-        transcript: j['transcript'] as String,
-        summary: j['summary'] as String,
-      );
-
-  Map<String, dynamic> toJson() => {
-        'taskId': taskId,
-        'transcript': transcript,
-        'summary': summary,
-      };
-}
-
-class RenderResult {
-  final String videoUrl;
-  const RenderResult({required this.videoUrl});
-
-  factory RenderResult.fromJson(Map<String, dynamic> j) =>
-      RenderResult(videoUrl: j['videoUrl'] as String);
-}
-
-class PublishResult {
-  final String postUrl;
-  final String caption;
-  final List<String> hashtags;
-
-  const PublishResult({
-    required this.postUrl,
-    required this.caption,
-    required this.hashtags,
-  });
-
-  factory PublishResult.fromJson(Map<String, dynamic> j) => PublishResult(
-        postUrl: j['postUrl'] as String,
-        caption: j['caption'] as String,
-        hashtags:
-            (j['hashtags'] as List<dynamic>).map((e) => e as String).toList(),
-      );
-}
-
-class ShootSession {
-  final SessionStatus status;
-  final int currentTaskIndex; // 0..4
-  final List<Task> tasks;
-  final List<Capture> captures;
-  final List<Review> reviews;
-  final String? videoUrl;
-  final String? postUrl;
-  final String? caption;
-  final List<String>? hashtags;
-
-  const ShootSession({
-    required this.status,
-    required this.currentTaskIndex,
-    required this.tasks,
-    required this.captures,
-    required this.reviews,
-    this.videoUrl,
-    this.postUrl,
-    this.caption,
-    this.hashtags,
-  });
-
-  factory ShootSession.empty() => const ShootSession(
-        status: SessionStatus.brief,
-        currentTaskIndex: 0,
-        tasks: [],
-        captures: [],
-        reviews: [],
-      );
-
-  Task? get currentTask =>
-      (currentTaskIndex >= 0 && currentTaskIndex < tasks.length)
-          ? tasks[currentTaskIndex]
-          : null;
-
-  ShootSession copyWith({
-    SessionStatus? status,
-    int? currentTaskIndex,
-    List<Task>? tasks,
-    List<Capture>? captures,
-    List<Review>? reviews,
-    String? videoUrl,
-    String? postUrl,
-    String? caption,
-    List<String>? hashtags,
+  StopDraft copyWith({
+    String? photoBase64,
+    String? videoName,
+    int? voiceSeconds,
+    String? note,
+    DateTime? savedAt,
+    bool? posted,
+    String? postedPlatform,
+    bool clearPhoto = false,
+    bool clearVideo = false,
+    bool clearVoice = false,
+    bool clearNote = false,
   }) {
-    return ShootSession(
-      status: status ?? this.status,
-      currentTaskIndex: currentTaskIndex ?? this.currentTaskIndex,
-      tasks: tasks ?? this.tasks,
-      captures: captures ?? this.captures,
-      reviews: reviews ?? this.reviews,
-      videoUrl: videoUrl ?? this.videoUrl,
-      postUrl: postUrl ?? this.postUrl,
-      caption: caption ?? this.caption,
-      hashtags: hashtags ?? this.hashtags,
+    return StopDraft(
+      businessId: businessId,
+      photoBase64: clearPhoto ? null : (photoBase64 ?? this.photoBase64),
+      videoName: clearVideo ? null : (videoName ?? this.videoName),
+      voiceSeconds: clearVoice ? null : (voiceSeconds ?? this.voiceSeconds),
+      note: clearNote ? null : (note ?? this.note),
+      savedAt: savedAt ?? this.savedAt,
+      posted: posted ?? this.posted,
+      postedPlatform: postedPlatform ?? this.postedPlatform,
     );
   }
 
-  factory ShootSession.fromJson(Map<String, dynamic> j) => ShootSession(
-        status: sessionStatusFromString(j['status'] as String),
-        currentTaskIndex: j['currentTaskIndex'] as int,
-        tasks: (j['tasks'] as List<dynamic>)
-            .map((e) => Task.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        captures: (j['captures'] as List<dynamic>)
-            .map((e) => Capture.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        reviews: (j['reviews'] as List<dynamic>)
-            .map((e) => Review.fromJson(e as Map<String, dynamic>))
-            .toList(),
-        videoUrl: j['videoUrl'] as String?,
-        postUrl: j['postUrl'] as String?,
-        caption: j['caption'] as String?,
-        hashtags:
-            (j['hashtags'] as List<dynamic>?)?.map((e) => e as String).toList(),
+  factory StopDraft.fromJson(Map<String, dynamic> j) => StopDraft(
+        businessId: j['businessId'] as String,
+        photoBase64: j['photoBase64'] as String?,
+        videoName: j['videoName'] as String?,
+        voiceSeconds: j['voiceSeconds'] as int?,
+        note: j['note'] as String?,
+        savedAt: j['savedAt'] != null
+            ? DateTime.tryParse(j['savedAt'] as String)
+            : null,
+        posted: j['posted'] as bool? ?? false,
+        postedPlatform: j['postedPlatform'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
-        'status': status.name,
-        'currentTaskIndex': currentTaskIndex,
-        'tasks': tasks.map((t) => t.toJson()).toList(),
-        'captures': captures.map((c) => c.toJson()).toList(),
-        'reviews': reviews.map((r) => r.toJson()).toList(),
-        'videoUrl': videoUrl,
-        'postUrl': postUrl,
-        'caption': caption,
-        'hashtags': hashtags,
+        'businessId': businessId,
+        'photoBase64': photoBase64,
+        'videoName': videoName,
+        'voiceSeconds': voiceSeconds,
+        'note': note,
+        'savedAt': savedAt?.toIso8601String(),
+        'posted': posted,
+        'postedPlatform': postedPlatform,
       };
 }
+
+/// The four ways a script task can end. Each maps to a capture card on the
+/// step screen — the script tells the influencer which one to open.
+enum CaptureAction { photo, video, voice, text }
+
+CaptureAction captureActionFromString(String s) => CaptureAction.values
+    .firstWhere((a) => a.name == s, orElse: () => CaptureAction.photo);
+
+/// One task inside a scene. [required] means the perk deliverable needs it —
+/// the stop can't be posted until every required action is captured.
+class ScriptAction {
+  final CaptureAction kind;
+  final String prompt; // "Facade dead-center. Nothing may lean."
+  final bool required;
+
+  const ScriptAction(this.kind, this.prompt, {this.required = false});
+
+  factory ScriptAction.fromJson(Map<String, dynamic> j) => ScriptAction(
+        captureActionFromString(j['kind'] as String),
+        j['prompt'] as String,
+        required: j['required'] as bool? ?? false,
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'kind': kind.name, 'prompt': prompt, 'required': required};
+}
+
+class ScriptStep {
+  final String businessId;
+  final String sceneTitle; // "SCENE 2 · THE ARCADES, SYMMETRICAL"
+  final String direction; // themed staging instruction
+  final String line; // line to deliver (voice/caption seed)
+  final String? perkCallout; // "Deliver 1 photo + 1 story → 2 free coffees (€7)"
+  final List<ScriptAction> actions;
+
+  const ScriptStep({
+    required this.businessId,
+    required this.sceneTitle,
+    required this.direction,
+    required this.line,
+    required this.actions,
+    this.perkCallout,
+  });
+
+  List<ScriptAction> get requiredActions =>
+      actions.where((a) => a.required).toList();
+
+  /// Every required capture present in [draft]?
+  bool satisfiedBy(StopDraft draft) =>
+      requiredActions.every((a) => draft.has(a.kind));
+
+  factory ScriptStep.fromJson(Map<String, dynamic> j) => ScriptStep(
+        businessId: j['businessId'] as String,
+        sceneTitle: j['sceneTitle'] as String,
+        direction: j['direction'] as String,
+        line: j['line'] as String,
+        perkCallout: j['perkCallout'] as String?,
+        actions: (j['actions'] as List<dynamic>)
+            .map((e) => ScriptAction.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'businessId': businessId,
+        'sceneTitle': sceneTitle,
+        'direction': direction,
+        'line': line,
+        'perkCallout': perkCallout,
+        'actions': actions.map((a) => a.toJson()).toList(),
+      };
+}
+
+extension CaptureActionX on CaptureAction {
+  IconData get icon => switch (this) {
+        CaptureAction.photo => CupertinoIcons.camera_fill,
+        CaptureAction.video => CupertinoIcons.videocam_fill,
+        CaptureAction.voice => CupertinoIcons.mic_fill,
+        CaptureAction.text => CupertinoIcons.pencil,
+      };
+
+  String get label => switch (this) {
+        CaptureAction.photo => 'Photo',
+        CaptureAction.video => 'Video',
+        CaptureAction.voice => 'Voice note',
+        CaptureAction.text => 'Write',
+      };
+}
+
+enum PerkStatus { pending, approved, redeemed }
+
+extension PerkStatusX on PerkStatus {
+  String get label => switch (this) {
+        PerkStatus.pending => 'Pending',
+        PerkStatus.approved => 'Approved',
+        PerkStatus.redeemed => 'Redeemed',
+      };
+
+  Color get color => switch (this) {
+        PerkStatus.pending => AppColors.amber,
+        PerkStatus.approved => AppColors.green,
+        PerkStatus.redeemed => AppColors.muted,
+      };
+}
+
+class Perk {
+  final String businessId;
+  final PerkStatus status;
+  final DateTime earnedAt;
+
+  const Perk({
+    required this.businessId,
+    required this.status,
+    required this.earnedAt,
+  });
+
+  Perk copyWith({PerkStatus? status}) => Perk(
+        businessId: businessId,
+        status: status ?? this.status,
+        earnedAt: earnedAt,
+      );
+
+  factory Perk.fromJson(Map<String, dynamic> j) => Perk(
+        businessId: j['businessId'] as String,
+        status: PerkStatus.values.firstWhere(
+          (s) => s.name == j['status'],
+          orElse: () => PerkStatus.pending,
+        ),
+        earnedAt:
+            DateTime.tryParse(j['earnedAt'] as String? ?? '') ?? DateTime.now(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'businessId': businessId,
+        'status': status.name,
+        'earnedAt': earnedAt.toIso8601String(),
+      };
+}
+
+enum StrollMode { roam, earn }
+
+enum ScriptStyle { cityStory, perStop }

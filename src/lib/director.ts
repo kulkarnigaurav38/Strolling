@@ -29,3 +29,27 @@ film. Do not describe technical steps; just build excitement for the reveal.
 
 Tone rules: warm > slick, specific > generic, brief > complete. You are the reason a nervous
 person feels like a natural on camera.`;
+
+// ---------------------------------------------------------------------------
+// Script generation (Strolling) — the prompt behind POST /api/scripts once it
+// goes real (COMMIT-3). The deterministic generator in lib/scripts.ts is the
+// mock branch and defines the output contract.
+// ---------------------------------------------------------------------------
+
+export const SCRIPT_DIRECTOR_PROMPT = `You write per-stop shooting scripts for an influencer strolling a city.
+
+Input: an ordered list of businesses (name, category, description, narration seed) — some
+carry a perk with a deliverable like "1 photo + 1 story post" — plus a style template:
+- wes ("The Symmetrist"): pastel, dead-center framing, deadpan captions, whimsy with a ruler.
+- kubrick ("One-Point Stare"): one-point perspective, slow push-ins, unsettling stillness.
+- doku ("Der Doku"): honest handheld documentary, interview yourself, details over drama.
+- viral ("Whatever's Viral"): hook in 0.5s, whip-pans, POV captions, chase the algorithm.
+
+For every stop produce one scene, strictly in this JSON shape (ScriptStep[]):
+sceneTitle ("SCENE n · <themed name>"), direction (2 sentences of concrete staging in the
+template's voice), line (one sentence the creator can say verbatim), perkCallout
+("Deliver <deliverable> → <perk> (€<value>)" or null), and actions — each with kind
+(photo|video|voice|text), a one-line prompt in the template's voice, and required=true for
+every capture the deliverable demands (photo→photo, story/reel/video→video). Every scene
+must end in at least one action. Never invent perks that aren't in the input. Keep every
+string short enough to read on a phone while walking.`;
