@@ -25,11 +25,14 @@ async function main(): Promise<void> {
   const admin = createClient(config.supabaseUrl, config.supabaseServiceKey, {
     auth: { persistSession: false },
   });
-  const { count, error } = await admin
-    .from(config.supabaseTable)
-    .select("*", { count: "exact", head: true });
-  if (error) throw new Error(error.message);
-  console.log(`OK ✓ (${count ?? 0} rows)`);
+  // A real select (not HEAD) so a missing table surfaces as an error.
+  const { error } = await admin.from(config.supabaseTable).select("id").limit(1);
+  if (error) {
+    throw new Error(
+      `${error.message} — run supabase/schema.sql to create the "${config.supabaseTable}" table`,
+    );
+  }
+  console.log("OK ✓");
   console.log("\nSupabase is ready. Frontend inserts a job row → POST /api/render { jobId }.");
 }
 
