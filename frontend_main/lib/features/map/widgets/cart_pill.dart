@@ -73,7 +73,9 @@ class CartPill extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Row(
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
                         children: cart.map((id) {
                           final b = byId[id];
                           if (b == null) return const SizedBox.shrink();
@@ -91,12 +93,16 @@ class CartPill extends StatelessWidget {
                                 style: const TextStyle(fontSize: 11)),
                           );
                         }).toList(),
+                        ),
                       ),
                     ],
                   ),
           ),
           const SizedBox(width: 8),
-          Material(
+          // Flexible so a narrow viewport shrinks the CTA instead of
+          // overflowing the pill (was a 91px overflow at ~90px width).
+          Flexible(
+            child: Material(
             color: ready ? StrollingColors.primary : const Color(0xFFF2EFE8),
             borderRadius: BorderRadius.circular(16),
             child: InkWell(
@@ -108,12 +114,16 @@ class CartPill extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      ready ? 'Create stroll' : 'Add 2+ stops',
-                      style: GoogleFonts.nunito(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                        color: ready ? Colors.white : StrollingColors.muted,
+                    Flexible(
+                      child: Text(
+                        ready ? 'Create stroll' : 'Add 2+ stops',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.nunito(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: ready ? Colors.white : StrollingColors.muted,
+                        ),
                       ),
                     ),
                     if (ready) ...[
@@ -125,6 +135,7 @@ class CartPill extends StatelessWidget {
                 ),
               ),
             ),
+          ),
           ),
         ],
       ),

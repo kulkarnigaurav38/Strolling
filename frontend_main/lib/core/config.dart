@@ -18,4 +18,15 @@ class Config {
     'API_BASE_URL',
     defaultValue: 'http://localhost:3000',
   );
+
+  /// Map renderer. Defaults to OpenStreetMap (flutter_map), which needs no API
+  /// key and therefore always works. Switch to Google Maps only once the key is
+  /// in place AND the Maps JavaScript API (web) / Maps SDK for Android are
+  /// enabled on the Cloud project — otherwise Google renders an error overlay:
+  ///
+  ///   flutter run --dart-define=USE_GOOGLE_MAPS=true
+  static const bool useGoogleMaps = bool.fromEnvironment(
+    'USE_GOOGLE_MAPS',
+    defaultValue: false,
+  );
 }

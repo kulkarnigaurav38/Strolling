@@ -35,7 +35,13 @@ dependencies:
   go_router: ^16.0.0
   google_fonts: ^6.2.1
   flutter_svg: ^2.2.0
+  # Map renderers. OpenStreetMap via flutter_map is the DEFAULT because it
+  # needs no API key. Google Maps is used when the key + Maps JavaScript API /
+  # Maps SDK are active — build with --dart-define=USE_GOOGLE_MAPS=true.
+  # google_maps_flutter also provides the LatLng type used by core/models.
   google_maps_flutter: ^2.12.3
+  flutter_map: ^8.1.1
+  latlong2: ^0.9.1
   shared_preferences: ^2.5.5
   image_picker: ^1.2.3
   http: ^1.6.0
