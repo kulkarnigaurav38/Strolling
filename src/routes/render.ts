@@ -25,6 +25,8 @@ renderRouter.post("/", async (req, res, next) => {
     const body = (req.body ?? {}) as Partial<RenderRequest> & {
       jobId?: string;
       voiceoverUrl?: string;
+      // The simple synchronous shape: pictures + their script parts.
+      shots?: { mediaUrl: string; kind?: "photo" | "clip"; script?: string }[];
     };
 
     // --- Path A: async Supabase job (optional trigger) ---
@@ -43,22 +45,24 @@ renderRouter.post("/", async (req, res, next) => {
       return;
     }
 
-    // --- Path B: direct payload (for testing / non-Supabase callers) ---
+    // --- Path B: synchronous "send pictures + scripts → get the video back" ---
+    // The frontend POSTs { shots: [{ mediaUrl, kind, script }] } (or legacy
+    // captures/reviews) and gets { videoUrl } once the render finishes.
     const shots = shotsFromPayload(body);
-    const input: RenderInput = {
-      shots: shots.length > 0 ? shots : MOCK_SHOTS,
-      business: body.business,
-      voiceoverUrl: body.voiceoverUrl,
-    };
 
-    // ⚠️ MOCK fast-path (direct payload only): MOCK=1 returns a pre-baked sample so
-    // teammates aren't blocked. Use ?force=1 (or MOCK=0) to run the real pipeline.
-    if (config.mock && req.query.force === undefined) {
+    // ⚠️ MOCK fast-path — ONLY when no real shots were sent (keeps teammates who
+    // just want the response shape unblocked). A real request always renders.
+    if (shots.length === 0 && config.mock && req.query.force === undefined) {
       const result: RenderResult = { videoUrl: "/mock/sample.mp4" };
       res.json(result);
       return;
     }
 
+    const input: RenderInput = {
+      shots: shots.length > 0 ? shots : MOCK_SHOTS,
+      business: body.business,
+      voiceoverUrl: body.voiceoverUrl,
+    };
     const { videoUrl, usedFal, voiceoverEngine } = await renderVideo(input);
     res.setHeader("x-render-engine", usedFal ? "fal" : "ffmpeg-local");
     res.setHeader("x-render-inputs", shots.length > 0 ? "creator" : "mock");
@@ -71,8 +75,27 @@ renderRouter.post("/", async (req, res, next) => {
   }
 });
 
-/** Pair captures with their script parts (by taskId) into shots. */
-function shotsFromPayload(body: Partial<RenderRequest>): Shot[] {
+/**
+ * Build shots from the request. Preferred shape is a direct `shots` array
+ * ({ mediaUrl, kind, script }); legacy callers can still send captures + reviews
+ * paired by taskId.
+ */
+function shotsFromPayload(
+  body: Partial<RenderRequest> & {
+    shots?: { mediaUrl: string; kind?: "photo" | "clip"; script?: string }[];
+  },
+): Shot[] {
+  // Preferred: pictures + their script parts, already paired.
+  if (Array.isArray(body.shots) && body.shots.length > 0) {
+    return body.shots
+      .filter((s) => s && s.mediaUrl)
+      .map((s) => ({
+        media: { url: s.mediaUrl, kind: s.kind === "clip" ? "clip" : "photo" },
+        script: (s.script ?? "").trim(),
+      }));
+  }
+
+  // Legacy: captures + reviews paired by taskId.
   const partByTask = new Map<string, string>(
     (body.reviews ?? [])
       .filter((r) => r && r.taskId)
