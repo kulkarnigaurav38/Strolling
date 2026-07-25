@@ -29,4 +29,22 @@ class Config {
     'USE_GOOGLE_MAPS',
     defaultValue: false,
   );
+
+  /// Mapbox public access token (`pk.…`). When set, the map renders Mapbox
+  /// raster tiles instead of OpenStreetMap. Keep it out of git — pass it at
+  /// build time:
+  ///
+  ///   flutter run --dart-define=MAPBOX_TOKEN=pk.xxx
+  ///
+  /// Empty → OpenStreetMap tiles (no token needed).
+  static const String mapboxToken = String.fromEnvironment('MAPBOX_TOKEN');
+
+  /// Mapbox style to render. Other good options:
+  /// `mapbox/light-v11`, `mapbox/outdoors-v12`, or your own `user/styleid`.
+  static const String mapboxStyle = String.fromEnvironment(
+    'MAPBOX_STYLE',
+    defaultValue: 'mapbox/streets-v12',
+  );
+
+  static bool get useMapbox => mapboxToken.isNotEmpty;
 }

@@ -9,8 +9,9 @@ import '../../../core/theme.dart';
 
 /// The city map. Two renderers behind one widget:
 ///
-/// * **OpenStreetMap** (`flutter_map`) — the DEFAULT. No API key, so it always
-///   renders. Tiles come from tile.openstreetmap.org.
+/// * **Raster tiles** (`flutter_map`) — the DEFAULT, and always renders. Uses
+///   **Mapbox** when `--dart-define=MAPBOX_TOKEN=pk.…` is set, otherwise
+///   **OpenStreetMap**, which needs no token at all.
 /// * **Google Maps** — used when built with `--dart-define=USE_GOOGLE_MAPS=true`
 ///   AND the key is present *and* the Maps JavaScript API / Maps SDK for Android
 ///   are enabled on the Cloud project. Without activation Google paints its own
@@ -49,7 +50,7 @@ class CityMapView extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// OpenStreetMap renderer (default — keyless)
+// Raster-tile renderer (default): Mapbox when a token is set, else OSM
 // ---------------------------------------------------------------------------
 
 class _OsmCityMap extends StatelessWidget {
@@ -77,6 +78,25 @@ class _OsmCityMap extends StatelessWidget {
     ];
   }
 
+  /// Mapbox raster tiles when a token is configured, else OpenStreetMap.
+  /// Mapbox serves 512px tiles, hence tileDimension/zoomOffset.
+  fm.TileLayer _tileLayer() {
+    if (Config.useMapbox) {
+      return fm.TileLayer(
+        urlTemplate:
+            'https://api.mapbox.com/styles/v1/${Config.mapboxStyle}/tiles/512/{z}/{x}/{y}@2x'
+            '?access_token=${Config.mapboxToken}',
+        tileDimension: 512,
+        zoomOffset: -1,
+        userAgentPackageName: 'dev.strolling.app',
+      );
+    }
+    return fm.TileLayer(
+      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      userAgentPackageName: 'dev.strolling.app',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final route = _routePoints;
@@ -93,10 +113,7 @@ class _OsmCityMap extends StatelessWidget {
         ),
       ),
       children: [
-        fm.TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'dev.strolling.app',
-        ),
+        _tileLayer(),
         if (route.length >= 2)
           fm.PolylineLayer(
             polylines: [
@@ -129,6 +146,16 @@ class _OsmCityMap extends StatelessWidget {
                   onTap: () => onPinTap(b.id),
                 ),
               ),
+          ],
+        ),
+        // Both Mapbox and OpenStreetMap require visible attribution.
+        fm.RichAttributionWidget(
+          alignment: fm.AttributionAlignment.bottomLeft,
+          showFlutterMapAttribution: false,
+          attributions: [
+            fm.TextSourceAttribution(
+              Config.useMapbox ? '© Mapbox © OpenStreetMap' : '© OpenStreetMap',
+            ),
           ],
         ),
       ],
