@@ -1,10 +1,13 @@
 import path from "node:path";
 import type { Shot } from "../services/renderPipeline";
 
-// Stand-in shots for the render pipeline while the capture/interview parts are in
-// progress. Each mock picture is paired with the raw script PART for that shot —
-// exactly the shape real data arrives in. Used only when the request carries no
-// real captures; real creator data always wins.
+// ⚠️ MOCK DATA. Stand-in shots for the render pipeline while the capture/interview
+// parts are still in progress. Each mock picture is paired with the raw script PART
+// for that shot — exactly the shape real data arrives in.
+//
+// REPLACE: nothing here needs editing. `POST /api/render` uses these ONLY when the
+// request has no `captures`; as soon as the real parts send `captures` + `reviews`,
+// the route builds shots from those instead (real data always wins).
 //
 // The parts are intentionally raw (fillers, false starts) to exercise the LLM
 // cleaning step.

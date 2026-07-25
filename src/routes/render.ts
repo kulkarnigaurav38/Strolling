@@ -36,14 +36,21 @@ renderRouter.post("/", async (req, res, next) => {
       }));
 
     const input: RenderInput = {
+      // Real creator shots when present. ⚠️ MOCK: MOCK_SHOTS (lib/mockAssets.ts)
+      // stand in when the request has no captures. This needs NO change when the
+      // real capture/interview parts ship — they just start POSTing captures +
+      // reviews and this uses them automatically.
       shots: shots.length > 0 ? shots : MOCK_SHOTS,
       business: body.business,
+      // Optional: a pre-made whole-video narration track (e.g. from another part).
       voiceoverUrl: body.voiceoverUrl,
     };
 
-    // Fast path for teammates who just need a valid response shape.
+    // ⚠️ MOCK fast-path: MOCK=1 (default) returns a pre-baked sample video so
+    // teammates who only need the response shape aren't blocked / charged.
+    // Use ?force=1 (or set MOCK=0) to run the REAL fal + ElevenLabs pipeline.
     if (config.mock && req.query.force === undefined) {
-      const result: RenderResult = { videoUrl: "/mock/sample.mp4" };
+      const result: RenderResult = { videoUrl: "/mock/sample.mp4" }; // served from public/mock/
       res.json(result);
       return;
     }

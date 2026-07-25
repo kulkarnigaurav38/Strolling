@@ -20,6 +20,11 @@ import type { Business } from "../lib/types";
 //            part_i → LLM clean → ElevenLabs voice  → audio_i
 //
 //   concat(clips) + concat(audio_i, in order) → mux → upload   (aligned per shot)
+//
+// REAL integrations (used when the keys are set): fal image-to-video, fal storage,
+// fal LLM (script cleaning), ElevenLabs TTS. Everything below tagged "⚠️ FALLBACK"
+// only runs when a key is missing, so the pipeline still works with zero keys —
+// remove/ignore those branches once every key is guaranteed in your environment.
 
 export interface MediaItem {
   url: string; // remote URL (real capture) or local path (mock fixture)
@@ -193,7 +198,8 @@ async function generateRawClip(
     const clipUrl = await falApi.imageToVideo(imageUrl, { prompt });
     return ff.download(clipUrl, path.join(work, `fal-${randomUUID()}.mp4`));
   }
-  // Photo, no fal → Ken Burns still (generous length; trimmed to fit later).
+  // ⚠️ FALLBACK (no FAL_KEY): a local Ken Burns pan on the still instead of a real
+  // fal image-to-video clip. Set FAL_KEY to get the animated version above.
   return ff.imageToClip(media.url, path.join(work, `kb-${randomUUID()}.mp4`), 8);
 }
 
@@ -235,7 +241,7 @@ async function buildShotAudio(
       );
     }
   }
-  // 2. fal TTS, if configured.
+  // 2. ⚠️ FALLBACK: fal TTS, only if a fal TTS model is configured.
   if (falApi.isFalEnabled() && config.falTtsModel) {
     const url = await falApi.textToSpeech(text);
     if (url) {
@@ -249,7 +255,7 @@ async function buildShotAudio(
       };
     }
   }
-  // 3. macOS `say`.
+  // 3. ⚠️ FALLBACK (no ElevenLabs / no fal TTS): macOS `say` voice (dev only).
   const said = await ff.sayVoiceover(text, `${stem}.m4a`);
   if (said) {
     await ff.padAndNormalizeAudio(said, out, PAD_SECONDS);
@@ -273,7 +279,8 @@ async function publish(finalPath: string): Promise<string> {
       `strolling-${randomUUID()}.mp4`,
     );
   }
-  // Local fallback → serve from public/renders.
+  // ⚠️ FALLBACK (no FAL_KEY): save locally and serve from /renders instead of
+  // uploading to fal storage. Fine for dev; not durable for production.
   await mkdir(config.rendersDir, { recursive: true });
   const name = `render-${randomUUID()}.mp4`;
   const dest = path.join(config.rendersDir, name);

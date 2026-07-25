@@ -25,9 +25,24 @@ implementations are fake. Each future commit swaps exactly one mock for one real
 integration. This keeps the backend runnable and the frontend unblocked at every step.
 
 - Never break the response shape of an endpoint — the frontend codes against it.
-- Every mock that stands in for real work is marked `// TODO(COMMIT-n): <real thing>`.
-  When you make one real, guard it behind `config.mock` and keep the mock branch working.
+- Comment tags to grep for: **`⚠️ MOCK`** = fake data/behavior to replace; **`⚠️ FALLBACK`**
+  = a no-key degraded path; **`TODO(COMMIT-n)`** = what/how to swap in the real thing.
 - No external network calls while `MOCK` is on. The API must always boot with no `.env`.
+
+## Status: what's real vs mocked (right now)
+
+| Piece | State | To make real / where |
+| ----- | ----- | -------------------- |
+| **Render — image-to-video** | ✅ REAL (fal) | needs `FAL_KEY` + `MOCK=0`; `src/lib/fal.ts` |
+| **Render — storage upload** | ✅ REAL (fal) | `uploadToStorage` in `src/lib/fal.ts` |
+| **Voiceover — script cleaning** | ✅ REAL (fal LLM) | `src/lib/scriptCleaner.ts` (`FAL_LLM_MODEL`) |
+| **Voiceover — TTS** | ✅ REAL (ElevenLabs) | `src/lib/elevenlabs.ts` (`ELEVENLABS_API_KEY`) |
+| **Render inputs (shots)** | ⚠️ MOCK when absent | send real `captures`+`reviews`; `src/lib/mockAssets.ts` |
+| `POST /api/render` (MOCK=1) | ⚠️ MOCK fast-path | returns `/mock/sample.mp4`; use `?force=1`/`MOCK=0` |
+| `POST /api/tasks` | ⚠️ MOCK | Claude — `src/routes/tasks.ts` TODO(COMMIT-3) |
+| `POST /api/media/upload` | ⚠️ MOCK | fal `uploadToStorage` — `src/routes/media.ts` TODO(COMMIT-3) |
+| `POST /api/publish` | ⚠️ MOCK | n8n webhook — `src/routes/publish.ts` TODO(COMMIT-5) |
+| No-key render path | ⚠️ FALLBACK | local ffmpeg (Ken Burns + `say`) when keys missing |
 
 ## Commands
 

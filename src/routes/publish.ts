@@ -9,6 +9,10 @@ publishRouter.post("/", async (req, res) => {
   const body = (req.body ?? {}) as Partial<PublishRequest>;
 
   if (config.mock) {
+    // ⚠️ MOCK: fake post URL + canned caption/hashtags — nothing is published.
+    // TODO(COMMIT-5) REPLACE WITH: POST { videoUrl, transcript } to the n8n webhook
+    // (config.n8nWebhookUrl) → it uploads a YouTube Short and returns the real
+    // postUrl + generated caption/hashtags. Map that response into PublishResult.
     const result: PublishResult = {
       postUrl: "https://youtube.com/shorts/mock",
       caption:
@@ -20,8 +24,7 @@ publishRouter.post("/", async (req, res) => {
     return;
   }
 
-  // TODO(COMMIT-5): POST the finished video to the n8n webhook, which uploads a
-  // YouTube Short and returns the live URL + generated caption/hashtags.
+  // TODO(COMMIT-5): real publish (n8n → YouTube Short) goes here (see above).
   void body;
   res.status(501).json({ error: "not_implemented", route: "publish" });
 });
