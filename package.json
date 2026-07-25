@@ -12,7 +12,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check:fal": "tsx scripts/checkFal.ts",
-    "check:supabase": "tsx scripts/checkSupabase.ts"
+    "check:supabase": "tsx scripts/checkSupabase.ts",
+    "setup:supabase": "tsx scripts/setupBuckets.ts"
   },
   "dependencies": {
     "@fal-ai/client": "^1.2.1",
