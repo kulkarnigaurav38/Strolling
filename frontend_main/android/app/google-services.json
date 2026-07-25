@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1064258375318",
+    "project_id": "strolling-42599",
+    "storage_bucket": "strolling-42599.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1064258375318:android:2c44c246388fa03e9abcb7",
+        "android_client_info": {
+          "package_name": "com.example.strolling"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1064258375318-v0e3d35t2n8scda1ks3hnosf56eo1qtn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.strolling",
+            "certificate_hash": "60a6e1d5f210456f7bb806adddcc5abfd0172393"
+          }
+        },
+        {
+          "client_id": "1064258375318-92mm50ak43k072r3god5961ngtlq664g.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbfKTPkkMm8r7tfEMfKvLNNXP-NVyXOho"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1064258375318-92mm50ak43k072r3god5961ngtlq664g.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

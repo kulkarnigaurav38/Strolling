@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  // ===============================================================
+  // Assumed Data Model
+  // ===============================================================
+  //
+  // Collection: users
+  // Document ID: {uid} (Firebase Auth UID)
+  // Fields:
+  //   - uid: string (required, immutable, must equal auth.uid)
+  //   - email: string|null (optional)
+  //   - displayName: string|null (optional)
+  //   - photoURL: string|null (optional)
+  //   - role: string (optional: creator|business|browse)
+  //   - createdAt: timestamp (required on create)
+  //   - updatedAt: timestamp (required)
+  //
+  // ===============================================================
+
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'createdAt', 'updatedAt'])
+        && data.uid is string
+        && data.uid == request.auth.uid
+        && (!('email' in data) || data.email == null || data.email is string)
+        && (!('displayName' in data) || data.displayName == null || data.displayName is string)
+        && (!('photoURL' in data) || data.photoURL == null || data.photoURL is string)
+        && (!('role' in data) || data.role == null || data.role in ['creator', 'business', 'browse']);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId)
+        && isValidUser(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(userId);
+    }
+  }
+}
