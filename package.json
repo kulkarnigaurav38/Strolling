@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check:fal": "tsx scripts/checkFal.ts",
     "check:supabase": "tsx scripts/checkSupabase.ts",
-    "setup:supabase": "tsx scripts/setupBuckets.ts"
+    "setup:supabase": "tsx scripts/setupBuckets.ts",
+    "e2e:job": "tsx scripts/e2eJob.ts"
   },
   "dependencies": {
     "@fal-ai/client": "^1.2.1",
