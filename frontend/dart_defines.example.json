@@ -1,9 +1,0 @@
-{
-  "_comment": "Copy to dart_defines.json and pass with --dart-define-from-file=dart_defines.json. Commit 1 needs NONE of these — the app runs fully mocked.",
-  "FERNWEH_MOCK": "true",
-  "API_BASE_URL": "http://localhost:3000",
-  "ANTHROPIC_API_KEY": "",
-  "FAL_KEY": "",
-  "ELEVENLABS_AGENT_ID": "",
-  "N8N_WEBHOOK_URL": ""
-}
