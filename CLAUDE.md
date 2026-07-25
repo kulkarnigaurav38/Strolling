@@ -44,6 +44,7 @@ integration. This keeps the backend runnable and the frontend unblocked at every
 | `POST /api/media/upload` | ⚠️ MOCK | fal `uploadToStorage` — `src/routes/media.ts` TODO(COMMIT-3) |
 | `POST /api/publish` | ⚠️ MOCK | n8n webhook — `src/routes/publish.ts` TODO(COMMIT-5) |
 | No-key render path | ⚠️ FALLBACK | local ffmpeg (Ken Burns + `say`) when keys missing |
+| **Business-layer tables** (profiles, social_accounts, offers, posts, perks/businesses alters) | ⚠️ DEFINED, pending apply | migration #2 `supabase/migrations/20260725121849_business_layer.sql` |
 
 ## Commands
 

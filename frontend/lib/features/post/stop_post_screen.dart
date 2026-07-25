@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/cupertino.dart';
@@ -5,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/api_client.dart';
+import '../../core/config.dart';
 import '../../core/models.dart';
 import '../../core/seed.dart';
 import '../../core/state.dart';
@@ -54,6 +57,23 @@ class _StopPostScreenState extends ConsumerState<StopPostScreen> {
     final b = businessById(widget.businessId);
     if (b.hasPerk) {
       ref.read(perksProvider.notifier).earn(b.id);
+    }
+
+    // Fire-and-forget: the backend registers the post + claim server-side,
+    // but the local mock flow above stays the source of truth for the demo.
+    // Deliberately NOT awaited — an unreachable backend must never delay
+    // the publish UX; failures are swallowed.
+    if (!Config.mock) {
+      unawaited(
+        ref
+            .read(apiClientProvider)
+            .registerPost(
+              businessId: b.id,
+              platform: _platform,
+              caption: _caption.text,
+            )
+            .catchError((_) {}),
+      );
     }
 
     if (!mounted) return;

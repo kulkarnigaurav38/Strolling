@@ -3,8 +3,13 @@ import cors from "cors";
 import express from "express";
 import { config } from "./config";
 import { errorHandler } from "./middleware/errorHandler";
+import { businessRouter } from "./routes/business";
 import { businessesRouter } from "./routes/businesses";
+import { claimsRouter } from "./routes/claims";
+import { meRouter } from "./routes/me";
 import { mediaRouter } from "./routes/media";
+import { offersRouter } from "./routes/offers";
+import { postsRouter } from "./routes/posts";
 import { publishRouter } from "./routes/publish";
 import { renderRouter } from "./routes/render";
 import { scriptsRouter } from "./routes/scripts";
@@ -32,6 +37,11 @@ export function createApp(): express.Express {
   app.use("/api/media", mediaRouter);
   app.use("/api/businesses", businessesRouter);
   app.use("/api/scripts", scriptsRouter);
+  app.use("/api/offers", offersRouter);
+  app.use("/api/claims", claimsRouter);
+  app.use("/api/posts", postsRouter);
+  app.use("/api/me", meRouter);
+  app.use("/api/business", businessRouter);
 
   app.use(errorHandler);
   return app;

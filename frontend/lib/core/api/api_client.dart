@@ -32,6 +32,29 @@ class ApiClient {
         .map((e) => ScriptStep.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  /// POST /api/posts — registers a published post (and its claim) server-side.
+  /// No auth for the hackathon: the demo user id travels in the body.
+  /// Short timeout; errors propagate to the caller.
+  Future<void> registerPost({
+    required String businessId,
+    required String platform,
+    String? caption,
+  }) async {
+    await _dio.post<Map<String, dynamic>>(
+      '/api/posts',
+      data: {
+        'userId': 'demo-user',
+        'businessId': businessId,
+        'platform': platform,
+        if (caption != null) 'caption': caption,
+      },
+      options: Options(
+        sendTimeout: const Duration(seconds: 3),
+        receiveTimeout: const Duration(seconds: 3),
+      ),
+    );
+  }
 }
 
 final apiClientProvider = Provider<ApiClient>((_) => ApiClient());

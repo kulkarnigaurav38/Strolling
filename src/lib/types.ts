@@ -140,3 +140,109 @@ export interface GenerateScriptResponse {
   templateId: string;
   steps: ScriptStep[];
 }
+
+// ---------------------------------------------------------------------------
+// Creator + business marketplace contract (offers, claims, posts, portal).
+// Mirrors migration #2 (profiles/social_accounts/offers/posts + perk alters).
+// ⚠️ MOCK auth: there is none for the hackathon — userId travels in the body /
+// query string and defaults to 'demo-user'.
+// TODO(REAL:auth): derive userId from the Supabase JWT (Authorization header).
+// ---------------------------------------------------------------------------
+
+/** social_platform enum in Postgres. */
+export type SocialPlatform = "instagram" | "facebook" | "tiktok";
+
+/** post_platform enum in Postgres (migration #1). */
+export type PostPlatform = "instagram" | "tiktok" | "facebook";
+
+/** offer_type enum in Postgres. */
+export type OfferType = "in_kind" | "cash";
+
+/**
+ * perk_status enum after migration #2 extends it. Lifecycle:
+ * en_route → arrived → posted → approved (business) → redeemed.
+ * ('pending' remains from migration #1 for legacy perk rows.)
+ */
+export type ClaimStatus =
+  | "pending"
+  | "en_route"
+  | "arrived"
+  | "posted"
+  | "approved"
+  | "redeemed";
+
+/** profiles table — one row per auth user. */
+export interface Profile {
+  id: string;
+  name: string;
+  city: string;
+  interests: string[];
+  score: number; // creator score, e.g. 4.8
+  createdAt: string; // ISO timestamp
+}
+
+/** social_accounts table — connected creator platform accounts. */
+export interface SocialAccount {
+  id: string;
+  userId: string;
+  platform: SocialPlatform;
+  handle: string; // '@sophie.explores'
+  followers: number;
+  connectedAt: string; // ISO timestamp
+}
+
+/** Business info joined onto an offer (map pin essentials). */
+export interface OfferBusiness {
+  id: string;
+  name: string;
+  category: string; // business_category or a free-form category for new signups
+  lat: number;
+  lng: number;
+}
+
+/** offers table — what a business puts on the marketplace. */
+export interface Offer {
+  id: string;
+  businessId: string;
+  perkTitle: string; // '3 free craft beers'
+  perkValue: number; // €
+  offerType: OfferType;
+  deliverable: string; // '1 story + tag'
+  minFollowers: number;
+  slotsTotal: number;
+  slotsRemaining: number;
+  active: boolean;
+  business?: OfferBusiness; // present on GET /api/offers
+}
+
+/** A claim = a perks row (+ mock ETA). The creator's side of an offer. */
+export interface Claim {
+  id: string;
+  userId: string;
+  businessId: string;
+  offerId: string | null; // null → claim predates offers / created via post
+  status: ClaimStatus;
+  etaMin: number; // ⚠️ MOCK: no live location — fixed/derived minutes
+}
+
+/** posts table — a published social post the business can see. */
+export interface PublishedPost {
+  id: string;
+  userId: string;
+  businessId: string;
+  platform: PostPlatform;
+  url?: string;
+  caption?: string;
+  reach: number;
+  likes: number;
+  comments: number;
+  postedAt: string; // ISO timestamp
+}
+
+/** GET /api/business/:id/stats — derived from claims + posts + offers. */
+export interface BusinessStats {
+  creatorsHosted: number;
+  posts: number;
+  totalReach: number;
+  costEur: number; // Σ perkValue of offers whose claims reached 'posted'+
+}

@@ -12,8 +12,8 @@ import '../../core/theme.dart';
 import 'widgets/business_sheet.dart';
 import 'widgets/mode_switch_card.dart';
 
-/// Where the demo user stands: Schlossplatz.
-const kUserLocation = LatLng(48.7784, 9.1800);
+/// Where the demo user stands: the hackathon venue (INFOMOTION, Friedrichstr. 6).
+const kUserLocation = LatLng(48.78397, 9.17796);
 
 class MapScreen extends ConsumerWidget {
   const MapScreen({super.key});

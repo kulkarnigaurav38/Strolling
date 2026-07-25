@@ -62,6 +62,23 @@ export const FALLBACK_TASKS: Task[] = [
 
 export const STROLL_BUSINESSES: StrollBusiness[] = [
   {
+    // The stage-demo stop: the hackathon venue itself.
+    id: "cursor-hackathon",
+    name: "Cursor Hackathon @ INFOMOTION",
+    category: "culture",
+    description:
+      "60 builders, one day, fourth floor at Friedrichstraße 6. The bar opens when the demos end.",
+    walkMinutes: 0,
+    rating: 4.9,
+    lat: 48.78397,
+    lng: 9.17796,
+    perkTitle: "Free drink at the bar",
+    perkValue: 6,
+    deliverable: "1 photo + 1 story post",
+    narration:
+      "You are already here. Sixty people building at once — capture the room before the demos start.",
+  },
+  {
     id: "brot-roesterei",
     name: "Brot & Rösterei",
     category: "cafe",

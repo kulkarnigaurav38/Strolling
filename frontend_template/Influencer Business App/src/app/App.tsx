@@ -1267,9 +1267,133 @@ function ProfileScreen() {
   );
 }
 
+// ── Business Dashboard data (live API with offline fallback) ──────────────────────
+const API = (import.meta as any).env?.VITE_API_URL ?? "http://localhost:3000";
+
+type BizStatTile = { label: string; value: string; trend: string; cc: string; bc: string };
+type BizOffer = { perk: string; remaining: number; total: number; req: string; eligible: number; type: string };
+type BizCreator = { name: string; handle: string; status: string; eta: string; followers: string; cls: string };
+type BizPost = { creator: string; platform: string; reach: string; likes: number; comments: number; img: string };
+
+const BIZ_FALLBACK_STATS: BizStatTile[] = [
+  { label: "Creators this month", value: "24", trend: "+6", cc: "text-blue-500", bc: "bg-blue-50 dark:bg-blue-950/25" },
+  { label: "Posts live", value: "18", trend: "+3", cc: "text-emerald-500", bc: "bg-emerald-50 dark:bg-emerald-950/25" },
+  { label: "Total reach", value: "142K", trend: "+28K", cc: "text-violet-500", bc: "bg-violet-50 dark:bg-violet-950/25" },
+  { label: "Cost per post", value: "€8.30", trend: "−€1.2", cc: "text-primary", bc: "bg-primary/5" },
+];
+const BIZ_FALLBACK_OFFERS: BizOffer[] = [
+  { perk: "3 free craft beers", remaining: 8, total: 20, req: "1 story + tag", eligible: 152, type: "in-kind" },
+  { perk: "€25 cash payment", remaining: 3, total: 5, req: "1 post + 1 reel · 10K min", eligible: 28, type: "cash" },
+];
+const BIZ_FALLBACK_CREATORS: BizCreator[] = [
+  { name: "Sophie M.", handle: "@sophie.explores", status: "en route", eta: "12 min", followers: "8.5K", cls: "from-orange-400 to-pink-500" },
+  { name: "Lukas K.", handle: "@lukasinthewild", status: "arrived", eta: "now", followers: "22K", cls: "from-teal-400 to-cyan-500" },
+  { name: "Anna B.", handle: "@byannab", status: "posted", eta: "done", followers: "41K", cls: "from-violet-400 to-purple-500" },
+];
+const BIZ_FALLBACK_POSTS: BizPost[] = [
+  { creator: "@anna.explores", platform: "Instagram", reach: "38.2K", likes: 1240, comments: 87, img: "https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=80&h=80&fit=crop&auto=format" },
+  { creator: "@cityguidemax", platform: "TikTok", reach: "61K", likes: 3850, comments: 214, img: "https://images.unsplash.com/photo-1483412033650-1015ddeb83d1?w=80&h=80&fit=crop&auto=format" },
+];
+const BIZ_CREATOR_GRADIENTS = ["from-orange-400 to-pink-500", "from-teal-400 to-cyan-500", "from-violet-400 to-purple-500"];
+const BIZ_POST_IMGS = [
+  "https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=80&h=80&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1483412033650-1015ddeb83d1?w=80&h=80&fit=crop&auto=format",
+];
+const BIZ_PLATFORM_LABELS: Record<string, string> = { instagram: "Instagram", tiktok: "TikTok", facebook: "Facebook" };
+
+function fmtK(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  if (n < 1000) return String(n);
+  const k = n / 1000;
+  return `${k >= 100 ? Math.round(k) : Math.round(k * 10) / 10}K`;
+}
+
+function useBusinessDashboardData() {
+  const [stats, setStats] = useState<BizStatTile[]>(BIZ_FALLBACK_STATS);
+  const [offers, setOffers] = useState<BizOffer[]>(BIZ_FALLBACK_OFFERS);
+  const [creators, setCreators] = useState<BizCreator[]>(BIZ_FALLBACK_CREATORS);
+  const [posts, setPosts] = useState<BizPost[]>(BIZ_FALLBACK_POSTS);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const responses = await Promise.all([
+          fetch(`${API}/api/business/demo/stats`),
+          fetch(`${API}/api/business/demo/offers`),
+          fetch(`${API}/api/business/demo/creators`),
+          fetch(`${API}/api/business/demo/posts`),
+        ]);
+        if (responses.some(r => !r.ok)) return; // any failure → keep hardcoded demo data
+        const [s, o, c, p] = await Promise.all(responses.map(r => r.json()));
+        if (cancelled) return;
+
+        // Stats: keep labels/colors/trends (trends not in the API), swap in live values.
+        const postCount = Number(s?.posts ?? 0);
+        const costEur = Number(s?.costEur ?? 0);
+        const costPerPost = postCount > 0 ? costEur / postCount : costEur;
+        setStats([
+          { ...BIZ_FALLBACK_STATS[0], value: String(s?.creatorsHosted ?? 0) },
+          { ...BIZ_FALLBACK_STATS[1], value: String(postCount) },
+          { ...BIZ_FALLBACK_STATS[2], value: fmtK(Number(s?.totalReach ?? 0)) },
+          { ...BIZ_FALLBACK_STATS[3], value: `€${costPerPost.toFixed(2)}` },
+        ]);
+
+        setOffers(
+          (Array.isArray(o) ? o : [])
+            .filter((x: any) => x?.active !== false)
+            .map((x: any): BizOffer => {
+              const minFollowers = Number(x?.minFollowers ?? 0);
+              return {
+                perk: String(x?.perkTitle ?? ""),
+                remaining: Number(x?.slotsRemaining ?? 0),
+                total: Number(x?.slotsTotal ?? 0) || 1,
+                req: `${x?.deliverable ?? ""}${minFollowers > 0 ? ` · ${fmtK(minFollowers)} min` : ""}`,
+                // "eligible" is not part of the API contract — estimated client-side.
+                eligible: Math.max(5, 152 - Math.round(minFollowers / 80)),
+                type: x?.offerType === "cash" ? "cash" : "in-kind",
+              };
+            }),
+        );
+
+        setCreators(
+          (Array.isArray(c) ? c : []).map((x: any, i: number): BizCreator => {
+            const status = x?.status === "en_route" ? "en route" : String(x?.status ?? "en route");
+            return {
+              name: String(x?.name ?? ""),
+              handle: String(x?.handle ?? "").startsWith("@") ? String(x?.handle) : `@${x?.handle ?? ""}`,
+              status,
+              eta: status === "en route" ? `${Number(x?.etaMin ?? 0)} min` : status === "arrived" ? "now" : "done",
+              followers: fmtK(Number(x?.followers ?? 0)),
+              cls: BIZ_CREATOR_GRADIENTS[i % BIZ_CREATOR_GRADIENTS.length],
+            };
+          }),
+        );
+
+        setPosts(
+          (Array.isArray(p) ? p : []).map((x: any, i: number): BizPost => ({
+            creator: String(x?.creatorHandle ?? "").startsWith("@") ? String(x?.creatorHandle) : `@${x?.creatorHandle ?? "creator"}`,
+            platform: BIZ_PLATFORM_LABELS[String(x?.platform ?? "")] ?? String(x?.platform ?? ""),
+            reach: fmtK(Number(x?.reach ?? 0)),
+            likes: Number(x?.likes ?? 0),
+            comments: Number(x?.comments ?? 0),
+            img: BIZ_POST_IMGS[i % BIZ_POST_IMGS.length],
+          })),
+        );
+      } catch {
+        // Backend offline — keep the hardcoded demo data as fallback.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  return { stats, offers, creators, posts };
+}
+
 // ── Business Dashboard ─────────────────────────────────────────────────────────────
 function BusinessDashboard() {
   const [activeTab, setActiveTab] = useState<"offers" | "creators" | "posts" | "redeem">("offers");
+  const { stats: bizStats, offers: bizOffers, creators: bizCreators, posts: bizPosts } = useBusinessDashboardData();
   return (
     <div className="absolute inset-0 bg-background flex flex-col">
       <div className="px-4 pt-4 pb-0 border-b border-border">
@@ -1293,12 +1417,7 @@ function BusinessDashboard() {
         </div>
       </div>
       <div className="px-4 py-3 grid grid-cols-2 gap-2">
-        {[
-          { label: "Creators this month", value: "24", trend: "+6", cc: "text-blue-500", bc: "bg-blue-50 dark:bg-blue-950/25" },
-          { label: "Posts live", value: "18", trend: "+3", cc: "text-emerald-500", bc: "bg-emerald-50 dark:bg-emerald-950/25" },
-          { label: "Total reach", value: "142K", trend: "+28K", cc: "text-violet-500", bc: "bg-violet-50 dark:bg-violet-950/25" },
-          { label: "Cost per post", value: "€8.30", trend: "−€1.2", cc: "text-primary", bc: "bg-primary/5" },
-        ].map(s => (
+        {bizStats.map(s => (
           <div key={s.label} className={cn("rounded-2xl p-3", s.bc)}>
             <p className={cn("text-xl font-extrabold", s.cc)}>{s.value}</p>
             <p className="text-[11px] text-muted-foreground leading-tight">{s.label}</p>
@@ -1310,10 +1429,7 @@ function BusinessDashboard() {
         {activeTab === "offers" && (
           <>
             <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Active offers</p>
-            {[
-              { perk: "3 free craft beers", remaining: 8, total: 20, req: "1 story + tag", eligible: 152, type: "in-kind" },
-              { perk: "€25 cash payment", remaining: 3, total: 5, req: "1 post + 1 reel · 10K min", eligible: 28, type: "cash" },
-            ].map((o, i) => (
+            {bizOffers.map((o, i) => (
               <div key={i} className="bg-card border border-border rounded-2xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="font-bold text-[14px] text-foreground">{o.perk}</span>
@@ -1332,11 +1448,7 @@ function BusinessDashboard() {
         {activeTab === "creators" && (
           <>
             <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Creator activity</p>
-            {[
-              { name: "Sophie M.", handle: "@sophie.explores", status: "en route", eta: "12 min", followers: "8.5K", cls: "from-orange-400 to-pink-500" },
-              { name: "Lukas K.", handle: "@lukasinthewild", status: "arrived", eta: "now", followers: "22K", cls: "from-teal-400 to-cyan-500" },
-              { name: "Anna B.", handle: "@byannab", status: "posted", eta: "done", followers: "41K", cls: "from-violet-400 to-purple-500" },
-            ].map((c, i) => (
+            {bizCreators.map((c, i) => (
               <div key={i} className="bg-card border border-border rounded-2xl p-3 flex items-center gap-3">
                 <div className={cn("w-10 h-10 rounded-full bg-gradient-to-br flex-none shadow", c.cls)} />
                 <div className="flex-1 min-w-0">
@@ -1353,10 +1465,7 @@ function BusinessDashboard() {
         {activeTab === "posts" && (
           <>
             <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Live posts</p>
-            {[
-              { creator: "@anna.explores", platform: "Instagram", reach: "38.2K", likes: 1240, comments: 87, img: "https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=80&h=80&fit=crop&auto=format" },
-              { creator: "@cityguidemax", platform: "TikTok", reach: "61K", likes: 3850, comments: 214, img: "https://images.unsplash.com/photo-1483412033650-1015ddeb83d1?w=80&h=80&fit=crop&auto=format" },
-            ].map((p, i) => (
+            {bizPosts.map((p, i) => (
               <div key={i} className="bg-card border border-border rounded-2xl p-3 flex gap-3">
                 <img src={p.img} alt="" className="w-14 h-14 rounded-xl object-cover flex-none bg-muted" />
                 <div className="flex-1 min-w-0">
