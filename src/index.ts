@@ -9,6 +9,7 @@ import { publishRouter } from "./routes/publish";
 import { renderRouter } from "./routes/render";
 import { scriptsRouter } from "./routes/scripts";
 import { tasksRouter } from "./routes/tasks";
+import { startJobWorker } from "./services/jobWorker";
 
 export function createApp(): express.Express {
   const app = express();
@@ -44,5 +45,7 @@ if (require.main === module) {
     console.log(
       `[strolling] listening on http://localhost:${config.port}  (mock=${config.mock})`,
     );
+    // Auto-render any queued Supabase jobs (frontend just inserts a row).
+    startJobWorker();
   });
 }

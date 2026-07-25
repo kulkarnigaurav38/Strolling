@@ -54,6 +54,11 @@ export const config = {
   supabaseTable: process.env.SUPABASE_TABLE ?? "reels",
   supabaseReelsBucket: process.env.SUPABASE_REELS_BUCKET ?? "reels",
   supabaseCapturesBucket: process.env.SUPABASE_CAPTURES_BUCKET ?? "captures",
+
+  // Background worker that auto-renders queued jobs (see services/jobWorker.ts).
+  jobWorker: process.env.JOB_WORKER !== "0",
+  jobPollMs: Number(process.env.JOB_POLL_MS ?? 4000),
+  jobMaxConcurrent: Number(process.env.JOB_MAX_CONCURRENT ?? 2),
 };
 
 export type Config = typeof config;

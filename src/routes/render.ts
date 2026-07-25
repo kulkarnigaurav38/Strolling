@@ -2,7 +2,8 @@ import { Router } from "express";
 import { config } from "../config";
 import { MOCK_SHOTS } from "../lib/mockAssets";
 import * as supabase from "../lib/supabase";
-import type { Business, RenderRequest, RenderResult } from "../lib/types";
+import type { RenderRequest, RenderResult } from "../lib/types";
+import { processJobById } from "../services/jobWorker";
 import { renderVideo, type RenderInput, type Shot } from "../services/renderPipeline";
 
 export const renderRouter = Router();
@@ -26,7 +27,11 @@ renderRouter.post("/", async (req, res, next) => {
       voiceoverUrl?: string;
     };
 
-    // --- Path A: async Supabase job ---
+    // --- Path A: async Supabase job (optional trigger) ---
+    // Note: the background worker (services/jobWorker) already auto-renders any
+    // queued row, so the frontend can just insert a row and skip this call. This
+    // endpoint just nudges a specific job to render immediately; claimJob makes
+    // sure the worker and this trigger never double-process it.
     if (body.jobId) {
       if (!supabase.isSupabaseEnabled()) {
         res.status(400).json({ error: "supabase_not_configured" });
@@ -34,7 +39,7 @@ renderRouter.post("/", async (req, res, next) => {
       }
       const jobId = String(body.jobId);
       res.status(202).json({ jobId, status: "processing" });
-      void runJob(jobId); // fire-and-forget; result lands on the Supabase row
+      void processJobById(jobId);
       return;
     }
 
@@ -79,32 +84,4 @@ function shotsFromPayload(body: Partial<RenderRequest>): Shot[] {
       media: { url: c.mediaUrl, kind: c.kind },
       script: partByTask.get(c.taskId) ?? "",
     }));
-}
-
-/** Render a Supabase job end to end and write the result back to its row. */
-async function runJob(jobId: string): Promise<void> {
-  try {
-    await supabase.updateJob(jobId, { status: "processing" });
-    const job = await supabase.getJob(jobId);
-    const shots: Shot[] = (job.shots ?? [])
-      .filter((s) => s && s.mediaUrl)
-      .map((s) => ({
-        media: { url: s.mediaUrl, kind: s.kind },
-        script: s.script ?? "",
-      }));
-    if (shots.length === 0) throw new Error("job has no shots");
-
-    const { videoUrl } = await renderVideo({
-      shots,
-      business: job.business as Business | undefined,
-    });
-    await supabase.updateJob(jobId, { status: "done", video_url: videoUrl });
-    console.log(`[strolling] job ${jobId} done → ${videoUrl}`);
-  } catch (err) {
-    const message = (err as Error).message;
-    console.error(`[strolling] job ${jobId} failed:`, message);
-    await supabase
-      .updateJob(jobId, { status: "error", error: message })
-      .catch(() => {});
-  }
 }

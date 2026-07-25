@@ -46,6 +46,33 @@ export async function getJob(id: string): Promise<RenderJob> {
   return { id: data.id, shots, business: data.business ?? undefined };
 }
 
+/** IDs of jobs waiting to be rendered (oldest first). */
+export async function listQueuedJobs(limit = 5): Promise<string[]> {
+  const { data, error } = await sb()
+    .from(config.supabaseTable)
+    .select("id")
+    .eq("status", "queued")
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(`listQueuedJobs: ${error.message}`);
+  return (data ?? []).map((r) => r.id as string);
+}
+
+/**
+ * Atomically claim a job: flip queued → processing only if it's still queued.
+ * Returns true if THIS caller won the claim (so it should render it).
+ */
+export async function claimJob(id: string): Promise<boolean> {
+  const { data, error } = await sb()
+    .from(config.supabaseTable)
+    .update({ status: "processing", updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("status", "queued")
+    .select("id");
+  if (error) throw new Error(`claimJob(${id}): ${error.message}`);
+  return (data?.length ?? 0) > 0;
+}
+
 export async function updateJob(
   id: string,
   patch: Record<string, unknown>,
