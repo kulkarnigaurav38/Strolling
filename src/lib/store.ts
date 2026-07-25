@@ -573,9 +573,11 @@ export class MemoryStore implements Store {
    * projector's dashboard during the stage demo.
    */
   private dashboardIds(businessId: string): Set<string> {
-    return businessId === DEMO_BUSINESS_ID
-      ? new Set([DEMO_BUSINESS_ID, "cursor-hackathon"])
-      : new Set([businessId]);
+    // 'demo' is the portal showcase: aggregate EVERY business so a creator who
+    // publishes about any stop appears on the dashboard immediately (the stage
+    // reveal). A real business id stays scoped to itself.
+    if (businessId !== DEMO_BUSINESS_ID) return new Set([businessId]);
+    return new Set([DEMO_BUSINESS_ID, ...this.businesses.keys()]);
   }
 
   async listBusinessCreators(businessId: string): Promise<BusinessCreatorRow[]> {
@@ -1033,11 +1035,14 @@ export class SupabaseStore implements Store {
   }
 
   async listBusinessCreators(businessId: string): Promise<BusinessCreatorRow[]> {
-    if (businessId === DEMO_BUSINESS_ID) return this.fallback.listBusinessCreators(businessId);
-    const { data, error } = await this.client
-      .from("perks")
-      .select("*")
-      .eq("business_id", businessId);
+    // 'demo' = portal showcase: real rows from EVERY business (so a creator who
+    // just published shows up) merged with the seeded demo creators.
+    const isDemo = businessId === DEMO_BUSINESS_ID;
+    const seeded = isDemo ? await this.fallback.listBusinessCreators(businessId) : [];
+    const query = this.client.from("perks").select("*");
+    const { data, error } = isDemo
+      ? await query
+      : await query.eq("business_id", businessId);
     if (error) {
       return this.readFallback(
         "listBusinessCreators",
@@ -1046,7 +1051,7 @@ export class SupabaseStore implements Store {
       );
     }
     const perks = (data ?? []) as unknown as PerkRow[];
-    if (perks.length === 0) return [];
+    if (perks.length === 0) return seeded;
     const userIds = [...new Set(perks.map((p) => p.user_id))];
     const [{ data: profiles }, { data: accounts }] = await Promise.all([
       this.client.from("profiles").select("id,name").in("id", userIds),
@@ -1060,7 +1065,7 @@ export class SupabaseStore implements Store {
         (a) => [a.user_id, a],
       ),
     );
-    return perks.map((p) => {
+    const live = perks.map((p) => {
       const claim = mapClaim(p);
       return {
         name: profileById.get(p.user_id)?.name ?? p.user_id,
@@ -1070,14 +1075,16 @@ export class SupabaseStore implements Store {
         etaMin: claim.etaMin,
       };
     });
+    return [...live, ...seeded];
   }
 
   async listBusinessPosts(businessId: string): Promise<BusinessPostRow[]> {
-    if (businessId === DEMO_BUSINESS_ID) return this.fallback.listBusinessPosts(businessId);
-    const { data, error } = await this.client
-      .from("posts")
-      .select("*")
-      .eq("business_id", businessId);
+    const isDemo = businessId === DEMO_BUSINESS_ID;
+    const seeded = isDemo ? await this.fallback.listBusinessPosts(businessId) : [];
+    const postQuery = this.client.from("posts").select("*");
+    const { data, error } = isDemo
+      ? await postQuery
+      : await postQuery.eq("business_id", businessId);
     if (error) {
       return this.readFallback(
         "listBusinessPosts",
@@ -1086,7 +1093,7 @@ export class SupabaseStore implements Store {
       );
     }
     const posts = ((data ?? []) as unknown as PostRow[]).map(mapPost);
-    if (posts.length === 0) return [];
+    if (posts.length === 0) return seeded;
     const userIds = [...new Set(posts.map((p) => p.userId))];
     const { data: accounts } = await this.client
       .from("social_accounts")
@@ -1097,21 +1104,31 @@ export class SupabaseStore implements Store {
       platform: SocialPlatform;
       handle: string;
     }>;
-    return posts.map((p) => {
+    const live = posts.map((p) => {
       const account =
         rows.find((a) => a.user_id === p.userId && a.platform === p.platform) ??
         rows.find((a) => a.user_id === p.userId);
       return { ...p, creatorHandle: account?.handle ?? `@${p.userId}` };
     });
+    // Newest first so a just-published post lands at the top of the dashboard.
+    live.sort((a, b) => b.postedAt.localeCompare(a.postedAt));
+    return [...live, ...seeded];
   }
 
   async getBusinessStats(businessId: string): Promise<BusinessStats> {
-    if (businessId === DEMO_BUSINESS_ID) return this.fallback.getBusinessStats(businessId);
-    const [perksRes, postsRes, offersRes] = await Promise.all([
-      this.client.from("perks").select("user_id,offer_id,status").eq("business_id", businessId),
-      this.client.from("posts").select("reach").eq("business_id", businessId),
-      this.client.from("offers").select("id,perk_value").eq("business_id", businessId),
-    ]);
+    const isDemo = businessId === DEMO_BUSINESS_ID;
+    const seeded = isDemo ? await this.fallback.getBusinessStats(businessId) : null;
+    const [perksRes, postsRes, offersRes] = isDemo
+      ? await Promise.all([
+          this.client.from("perks").select("user_id,offer_id,status"),
+          this.client.from("posts").select("reach"),
+          this.client.from("offers").select("id,perk_value"),
+        ])
+      : await Promise.all([
+          this.client.from("perks").select("user_id,offer_id,status").eq("business_id", businessId),
+          this.client.from("posts").select("reach").eq("business_id", businessId),
+          this.client.from("offers").select("id,perk_value").eq("business_id", businessId),
+        ]);
     const firstError = perksRes.error ?? postsRes.error ?? offersRes.error;
     if (firstError) {
       return this.readFallback(
@@ -1136,10 +1153,11 @@ export class SupabaseStore implements Store {
       .filter((p) => p.status === "posted" || p.status === "approved" || p.status === "redeemed")
       .reduce((sum, p) => sum + (p.offer_id ? valueByOffer.get(p.offer_id) ?? 0 : 0), 0);
     return {
-      creatorsHosted: new Set(perks.map((p) => p.user_id)).size,
-      posts: posts.length,
-      totalReach: posts.reduce((sum, p) => sum + p.reach, 0),
-      costEur,
+      creatorsHosted: new Set(perks.map((p) => p.user_id)).size + (seeded?.creatorsHosted ?? 0),
+      posts: posts.length + (seeded?.posts ?? 0),
+      totalReach:
+        posts.reduce((sum, p) => sum + p.reach, 0) + (seeded?.totalReach ?? 0),
+      costEur: costEur + (seeded?.costEur ?? 0),
     };
   }
 

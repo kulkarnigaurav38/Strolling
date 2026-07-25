@@ -112,7 +112,10 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
         widget.businessId,
         outcome.draft.copyWith(
           renderedVideoUrl: pkg.absoluteVideoUrl,
-          renderedCaption: pkg.caption,
+          // Don't persist an empty caption — the post screen falls back to a
+          // locally drafted one when this is null.
+          renderedCaption:
+              pkg.caption.trim().isEmpty ? null : pkg.caption,
           renderedHashtags: pkg.hashtags,
           renderedScript: pkg.script,
         ),

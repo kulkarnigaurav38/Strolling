@@ -294,6 +294,38 @@ class ApiClient {
       jsonDecode(res.body) as Map<String, dynamic>,
     );
   }
+
+  /// POST /api/posts — records the published post AND advances the creator's
+  /// claim to 'posted' server-side, which is what makes the post show up on the
+  /// business dashboard and the perk land in the wallet.
+  ///
+  /// [businessId] must be the API slug (MapBusiness.apiId), not the pin int.
+  /// Best-effort: callers should not block the publish UX on this.
+  Future<void> registerPost({
+    required String businessId,
+    required String platform,
+    String? caption,
+    String? url,
+    String userId = 'demo-user',
+  }) async {
+    if (Config.mock) return;
+    final res = await _http
+        .post(
+          _uri('/api/posts'),
+          headers: {'content-type': 'application/json'},
+          body: jsonEncode({
+            'userId': userId,
+            'businessId': businessId,
+            'platform': platform,
+            if (caption != null && caption.isNotEmpty) 'caption': caption,
+            if (url != null && url.isNotEmpty) 'url': url,
+          }),
+        )
+        .timeout(const Duration(seconds: 5));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('registerPost failed: ${res.statusCode} ${res.body}');
+    }
+  }
 }
 
 /// App-wide singleton — frontend_main has no Riverpod.

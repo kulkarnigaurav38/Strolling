@@ -14,7 +14,11 @@ import type { OfferType } from "../lib/types";
 // dashboard data; real ids are business slugs (e.g. 'brot-roesterei').
 
 export const businessRouter = Router();
-businessRouter.use(writeRateLimit);
+// Only rate-limit writes. The dashboard fires four GETs on every open/refresh,
+// so a router-wide limiter would 429 the portal after a few refreshes.
+businessRouter.use((req, res, next) =>
+  req.method === "GET" ? next() : writeRateLimit(req, res, next),
+);
 
 const OFFER_TYPES: OfferType[] = ["in_kind", "cash"];
 
@@ -193,6 +197,10 @@ businessRouter.post("/:id/offers", async (req, res, next) => {
     handleError(err, res, next);
   }
 });
+
+// The portal's showcase id. 'demo' aggregates every business so a creator who
+// posts about any stop shows up on the dashboard during the stage demo.
+// TODO(REAL:auth): scope this to the signed-in owner's businesses.
 
 // GET /api/business/:id/creators → live creators
 // [{ name, handle, followers, status: 'en_route'|'arrived'|'posted', etaMin }]

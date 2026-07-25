@@ -130,11 +130,12 @@ class _StepScreenState extends State<StepScreen> {
   Widget build(BuildContext context) {
     final stroll = StrollScope.of(context).state;
     final script = scriptForStroll(stroll);
+    // Never throw from build(): an empty stroll (deep link, cleared state,
+    // hot restart) used to raise StateError and show Flutter's red screen.
+    if (script.isEmpty) return const _NoActiveStroll();
     final step = script.firstWhere(
       (s) => s.businessId == widget.businessId,
-      orElse: () => script.isEmpty
-          ? throw StateError('no active stroll')
-          : script.first,
+      orElse: () => script.first,
     );
     final draft = _draft;
     final b = businessById(step.businessId);
@@ -1119,6 +1120,62 @@ class _SecondaryButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: child,
+      ),
+    );
+  }
+}
+
+/// Shown when the step screen is opened without an active stroll instead of
+/// throwing out of build().
+class _NoActiveStroll extends StatelessWidget {
+  const _NoActiveStroll();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: StrollingColors.background,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.map_outlined,
+                    size: 46, color: StrollingColors.muted),
+                const SizedBox(height: 14),
+                Text(
+                  'No active stroll',
+                  style: GoogleFonts.fraunces(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: StrollingColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Pick a couple of stops on the map to start one.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    color: StrollingColors.muted,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: () => context.go(AppRoutes.creatorHome),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: StrollingColors.primary,
+                  ),
+                  child: Text(
+                    'Open the map',
+                    style: GoogleFonts.nunito(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

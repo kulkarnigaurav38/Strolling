@@ -31,9 +31,13 @@ class _StopPostScreenState extends State<StopPostScreen> {
     super.initState();
     final draft =
         StrollScope.of(context, listen: false).state.draftFor(widget.businessId);
+    // ?? is not enough: the render API can return an EMPTY caption, which left
+    // the box blank right after the "Writing a caption…" loader.
+    final rendered = draft.renderedCaption?.trim();
     _caption = TextEditingController(
-      text: draft.renderedCaption ??
-          draftCaption(businessById(widget.businessId)),
+      text: (rendered == null || rendered.isEmpty)
+          ? draftCaption(businessById(widget.businessId))
+          : rendered,
     );
   }
 
@@ -49,13 +53,29 @@ class _StopPostScreenState extends State<StopPostScreen> {
     final draft = controller.state.draftFor(widget.businessId);
     final b = businessById(widget.businessId);
 
+    var backendOk = true;
+    PublishResult? published;
     try {
-      await apiClient.publish(
+      published = await apiClient.publish(
         videoUrl: draft.renderedVideoUrl ?? '/mock/sample.mp4',
         transcript: draft.renderedScript ?? _caption.text,
       );
     } catch (_) {
-      // Still mark posted locally so the stroll can continue offline.
+      backendOk = false; // still mark posted locally so the stroll continues
+    }
+
+    // Record the post + advance the claim so the business dashboard and the
+    // perks wallet actually see it. Separate from /api/publish, which only
+    // renders the social payload.
+    try {
+      await apiClient.registerPost(
+        businessId: b.backendId,
+        platform: _platform,
+        caption: _caption.text,
+        url: published?.postUrl,
+      );
+    } catch (_) {
+      backendOk = false;
     }
 
     if (!mounted) return;
@@ -66,12 +86,15 @@ class _StopPostScreenState extends State<StopPostScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: StrollingColors.success,
+        backgroundColor:
+            backendOk ? StrollingColors.success : StrollingColors.mutedAlt,
         behavior: SnackBarBehavior.floating,
         content: Text(
-          b.hasPerk
-              ? 'Posted. ${b.perk} is pending approval.'
-              : 'Posted. Scene done.',
+          !backendOk
+              ? 'Saved on this device — backend unreachable.'
+              : (b.hasPerk
+                  ? 'Posted. ${b.perk} is pending approval.'
+                  : 'Posted. Scene done.'),
           style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
         ),
       ),
