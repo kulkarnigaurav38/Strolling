@@ -1,0 +1,53 @@
+name: strolling
+description: "Strolling — walk the city, get rewarded."
+publish_to: "none"
+version: 0.3.0+1
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # routing — bottom-nav shell + pushed step/post flows (lib/core/router.dart)
+  go_router: ^14.6.2
+
+  # state + persistence (stroll drafts survive restarts — "save & resume")
+  flutter_riverpod: ^2.6.1
+  shared_preferences: ^2.3.3
+
+  # the real city map (OpenStreetMap tiles, no key needed)
+  flutter_map: ^8.1.1
+  latlong2: ^0.9.1
+
+  # photo/video capture on the step screen (camera on device, picker on web)
+  image_picker: ^1.1.2
+
+  # backend client — POST /api/scripts when STROLLING_MOCK=false
+  dio: ^5.7.0
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  # SF Pro Text, bundled from a Mac's installed Apple fonts (demo use).
+  fonts:
+    - family: SF Pro
+      fonts:
+        - asset: assets/fonts/SF-Pro-Text-Regular.otf
+          weight: 400
+        - asset: assets/fonts/SF-Pro-Text-Medium.otf
+          weight: 500
+        - asset: assets/fonts/SF-Pro-Text-Semibold.otf
+          weight: 600
+        - asset: assets/fonts/SF-Pro-Text-Bold.otf
+          weight: 700
+        - asset: assets/fonts/SF-Pro-Text-Heavy.otf
+          weight: 800
