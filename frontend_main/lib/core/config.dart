@@ -47,4 +47,18 @@ class Config {
   );
 
   static bool get useMapbox => mapboxToken.isNotEmpty;
+
+  /// Basemap style when no Mapbox token is set. All of these are **keyless**.
+  ///
+  ///   carto-voyager  (default) clean, warm, subtle colour — suits the palette
+  ///   carto-positron           very light, almost monochrome; pins pop hardest
+  ///   carto-dark               dark mode
+  ///   osm                      classic OpenStreetMap (busiest)
+  ///   esri-satellite           aerial imagery
+  ///
+  ///   flutter run --dart-define=MAP_STYLE=carto-positron
+  static const String mapStyle = String.fromEnvironment(
+    'MAP_STYLE',
+    defaultValue: 'carto-voyager',
+  );
 }

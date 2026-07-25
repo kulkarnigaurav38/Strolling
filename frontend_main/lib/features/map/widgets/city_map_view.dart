@@ -78,8 +78,8 @@ class _OsmCityMap extends StatelessWidget {
     ];
   }
 
-  /// Mapbox raster tiles when a token is configured, else OpenStreetMap.
-  /// Mapbox serves 512px tiles, hence tileDimension/zoomOffset.
+  /// The basemap. Mapbox when a token is configured, otherwise one of the
+  /// keyless presets in [Config.mapStyle] — no account, no billing, no key.
   fm.TileLayer _tileLayer() {
     if (Config.useMapbox) {
       return fm.TileLayer(
@@ -91,10 +91,42 @@ class _OsmCityMap extends StatelessWidget {
         userAgentPackageName: 'dev.strolling.app',
       );
     }
-    return fm.TileLayer(
-      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      userAgentPackageName: 'dev.strolling.app',
-    );
+    return switch (Config.mapStyle) {
+      // CARTO basemaps: free, keyless, and much calmer than raw OSM.
+      'carto-positron' => fm.TileLayer(
+          urlTemplate:
+              'https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png',
+          userAgentPackageName: 'dev.strolling.app',
+        ),
+      'carto-dark' => fm.TileLayer(
+          urlTemplate:
+              'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}@2x.png',
+          userAgentPackageName: 'dev.strolling.app',
+        ),
+      'esri-satellite' => fm.TileLayer(
+          urlTemplate:
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          userAgentPackageName: 'dev.strolling.app',
+        ),
+      'osm' => fm.TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'dev.strolling.app',
+        ),
+      _ => fm.TileLayer(
+          urlTemplate:
+              'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+          userAgentPackageName: 'dev.strolling.app',
+        ),
+    };
+  }
+
+  String get _attribution {
+    if (Config.useMapbox) return '© Mapbox © OpenStreetMap';
+    return switch (Config.mapStyle) {
+      'esri-satellite' => 'Imagery © Esri',
+      'osm' => '© OpenStreetMap',
+      _ => '© OpenStreetMap © CARTO',
+    };
   }
 
   @override
@@ -153,9 +185,7 @@ class _OsmCityMap extends StatelessWidget {
           alignment: fm.AttributionAlignment.bottomLeft,
           showFlutterMapAttribution: false,
           attributions: [
-            fm.TextSourceAttribution(
-              Config.useMapbox ? '© Mapbox © OpenStreetMap' : '© OpenStreetMap',
-            ),
+            fm.TextSourceAttribution(_attribution),
           ],
         ),
       ],
