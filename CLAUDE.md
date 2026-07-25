@@ -72,12 +72,12 @@ The Regisseur voice agent (ElevenLabs) is **COMMIT-2** and lives on the frontend
 
 ## Render pipeline (the post-creation workflow) — `src/services/renderPipeline.ts`
 
-Turns the creator's **pictures + voiceover script** into a finished vertical video:
+Turns the creator's **pictures/clips + a raw voiceover script** into a finished vertical video:
 
 ```
-photo → fal image-to-video (animated clip)        ┐
-clip  → normalized as-is                          ├─ concat → mux narration → upload → { videoUrl }
-script → narration (fal TTS / macOS say / none)   ┘
+photo      → fal image-to-video (animated clip)      ┐
+clip       → normalized as-is                        ├─ concat → mux narration → upload → { videoUrl }
+raw script → LLM clean → ElevenLabs voice (audio)    ┘
 ```
 
 - **Inputs (real vs mock):** the route (`routes/render.ts`) builds the input from the
@@ -90,22 +90,31 @@ script → narration (fal TTS / macOS say / none)   ┘
   (Ken Burns stills + macOS `say` narration), served from `public/renders/` — so it runs and
   is testable with zero keys. `lib/fal.ts` isolates all fal calls; `lib/ffmpeg.ts` the media
   plumbing.
-- **Narration precedence:** `voiceoverUrl` in the body (e.g. from the ElevenLabs part) →
-  fal TTS (`FAL_TTS_MODEL`, opt-in) → macOS `say` (dev) → silent.
+- **Voiceover (the raw script → nice narration):** `lib/scriptCleaner.ts` sends the raw,
+  rambling transcript through a fal-hosted LLM (`FAL_LLM_MODEL`) to produce a crisp, ~40-70
+  word first-person script (set `CLEAN_SCRIPT=0` to skip). `lib/elevenlabs.ts` then speaks it
+  (`ELEVENLABS_VOICE_ID` / `ELEVENLABS_MODEL`). ElevenLabs is voice-only — the *cleaning* is
+  the LLM step, not ElevenLabs.
+- **Narration precedence:** `voiceoverUrl` in the body (a pre-made track) →
+  **ElevenLabs** (clean via fal LLM, then TTS) → fal TTS (`FAL_TTS_MODEL`) → macOS `say`
+  (dev) → silent.
+- **Ordering:** the voiceover is built first (clean+TTS is seconds) because its length paces
+  the clips; the per-picture fal jobs then run **concurrently** (`Promise.all`).
 - **Run behaviour:** `MOCK=1` (default) returns the pre-baked `/mock/sample.mp4` instantly;
   `?force=1` runs the real pipeline once; `MOCK=0` always runs it. Response headers
-  `x-render-engine` (`fal` | `ffmpeg-local`) and `x-render-inputs` (`creator` | `mock`) say
-  what happened.
+  `x-render-engine` (`fal` | `ffmpeg-local`), `x-render-inputs` (`creator` | `mock`), and
+  `x-voiceover-engine` (e.g. `elevenlabs (clean:fal-llm)`) report what happened.
 
-To go fully real: `FAL_KEY=… MOCK=0 npm run dev`, optionally set `FAL_I2V_MODEL` /
-`FAL_TTS_MODEL`. The fal response-shape extraction in `lib/fal.ts` is defensive — adjust it
-to the exact model you pick.
+To go fully real: `FAL_KEY=… ELEVENLABS_API_KEY=… MOCK=0 npm run dev`. The fal response-shape
+extraction in `lib/fal.ts` is defensive — adjust it to the exact model you pick.
 
 ## Environment
 
 All optional while mocked. See `.env.example`. Keys: `PORT`, `MOCK`, `ANTHROPIC_API_KEY`,
-`FAL_KEY`, `FAL_I2V_MODEL`, `FAL_TTS_MODEL`, `PUBLIC_BASE_URL`, `ELEVENLABS_AGENT_ID`,
-`ELEVENLABS_API_KEY`, `N8N_WEBHOOK_URL`. `.env` is gitignored — never commit real keys.
+`FAL_KEY`, `FAL_I2V_MODEL`, `FAL_I2V_DURATION`, `FAL_TTS_MODEL`, `FAL_LLM_MODEL`,
+`CLEAN_SCRIPT`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`,
+`ELEVENLABS_AGENT_ID`, `PUBLIC_BASE_URL`, `N8N_WEBHOOK_URL`. `.env` is gitignored — never
+commit real keys.
 
 Runtime note: the render pipeline shells out to **ffmpeg/ffprobe** (and macOS `say` for the
 dev narration fallback) — they must be on `PATH`.

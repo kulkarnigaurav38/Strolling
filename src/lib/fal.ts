@@ -63,6 +63,26 @@ export async function imageToVideo(
   return url;
 }
 
+/** Run a fal-hosted LLM (used to clean the raw voiceover script). Returns its text. */
+export async function runLLM(
+  prompt: string,
+  opts: { system?: string } = {},
+): Promise<string> {
+  ensure();
+  const result = (await fal.subscribe(config.falLlmModel, {
+    input: {
+      prompt,
+      ...(opts.system ? { system_prompt: opts.system } : {}),
+    },
+    logs: false,
+  })) as { data?: Record<string, any> } & Record<string, any>;
+
+  const data = result.data ?? result;
+  const out: unknown = data?.output ?? data?.text ?? data?.response;
+  if (typeof out !== "string") throw new Error("fal LLM: no output in response");
+  return out.trim();
+}
+
 /**
  * Optional narration via a fal TTS model. Returns null when no TTS model is
  * configured (the pipeline then falls back to local `say` / silence).

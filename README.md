@@ -40,10 +40,11 @@ npm run build && npm start
 
 ### Render pipeline (`POST /api/render`)
 
-Turns the creator's **pictures + voiceover script** into a vertical video: photos →
-fal image-to-video, clips normalized, narration muxed, then concatenated and uploaded.
-Real `captures`/`reviews` from the request are used when present; otherwise mock
-pictures + a mock script stand in (`src/lib/mockAssets.ts`) — **real data always wins**.
+Turns the creator's **pictures/clips + a raw voiceover script** into a vertical video:
+photos → fal image-to-video, creator clips normalized, and the **raw script cleaned by a
+fal LLM then voiced by ElevenLabs** — concatenated, muxed, and uploaded. Real
+`captures`/`reviews` from the request are used when present; otherwise mock pictures + a
+mock script stand in (`src/lib/mockAssets.ts`) — **real data always wins**.
 
 - `MOCK=1` (default) → instant `/mock/sample.mp4`. Add `?force=1` to run the pipeline once.
 - `MOCK=0` → always runs. With `FAL_KEY` it uses **fal** (image-to-video + storage);
@@ -85,7 +86,9 @@ src/
   services/
     renderPipeline.ts   the post-creation workflow (fal i2v + ffmpeg compose)
   lib/
-    fal.ts              fal client wrapper (image-to-video, storage, TTS)
+    fal.ts              fal client wrapper (image-to-video, storage, LLM, TTS)
+    elevenlabs.ts       ElevenLabs text-to-speech (the narration voice)
+    scriptCleaner.ts    raw script → polished voiceover text (fal LLM / heuristic)
     ffmpeg.ts           local media plumbing (normalize, concat, mux, narration)
     mockAssets.ts       MOCK_SCRIPT + mock pictures (fallback inputs)
   middleware/           errorHandler

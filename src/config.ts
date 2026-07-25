@@ -26,6 +26,15 @@ export const config = {
   falI2vDuration: process.env.FAL_I2V_DURATION ?? "5",
   /** Optional fal text-to-speech model for narration. Empty → local/say fallback. */
   falTtsModel: process.env.FAL_TTS_MODEL ?? "",
+
+  // --- voiceover: an LLM cleans the raw script, then ElevenLabs speaks it ---
+  /** fal-hosted LLM used to polish the raw voiceover transcript. */
+  falLlmModel: process.env.FAL_LLM_MODEL ?? "fal-ai/any-llm",
+  /** Clean the raw script before TTS. Set CLEAN_SCRIPT=0 to speak it verbatim. */
+  cleanScript: process.env.CLEAN_SCRIPT !== "0",
+  /** ElevenLabs voice + model for the narration audio. */
+  elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID ?? "21m00Tcm4TlvDq8ikWAM", // Rachel
+  elevenLabsModel: process.env.ELEVENLABS_MODEL ?? "eleven_multilingual_v2",
   /** Where composed videos are written and served from (local fallback). */
   rendersDir: path.join(process.cwd(), "public", "renders"),
   /** Absolute base for returned URLs (e.g. https://api.strolling.app). Empty → relative. */

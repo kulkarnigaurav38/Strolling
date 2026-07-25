@@ -2,16 +2,18 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config";
+import * as elevenlabs from "../lib/elevenlabs";
 import * as falApi from "../lib/fal";
 import * as ff from "../lib/ffmpeg";
+import { cleanScript } from "../lib/scriptCleaner";
 import type { Business } from "../lib/types";
 
-// The post-creation (render) workflow. Turns the creator's pictures + voiceover
-// script into a finished vertical video:
+// The post-creation (render) workflow. Turns the creator's pictures/clips +
+// a raw voiceover script into a finished vertical video:
 //
-//   photo → fal image-to-video (animated clip)        ┐
-//   clip  → normalized as-is                          ├─ concat → mux narration → upload
-//   script → narration audio (fal TTS / say / none)   ┘
+//   photo → fal image-to-video (animated clip)              ┐
+//   clip  → normalized as-is                                ├─ concat → mux narration → upload
+//   raw script → LLM clean → ElevenLabs voice (audio)       ┘
 //
 // When FAL_KEY is set the AI steps use fal; otherwise the whole thing degrades to
 // a local ffmpeg render (Ken Burns stills + local narration) so it runs with no
@@ -33,6 +35,14 @@ export interface RenderInput {
 export interface RenderPipelineResult {
   videoUrl: string;
   usedFal: boolean;
+  voiceoverEngine: string;
+  cleanedScript?: string;
+}
+
+interface Voiceover {
+  path: string | null;
+  engine: string;
+  script?: string;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -46,7 +56,8 @@ export async function renderVideo(
 
   try {
     // 1. Narration first — its length paces the visuals.
-    const audio = await buildVoiceover(input, work);
+    const vo = await buildVoiceover(input, work);
+    const audio = vo.path;
     const audioDur = audio ? await ff.probeDuration(audio) : 0;
     const perClip =
       audioDur > 0 ? clamp(audioDur / input.media.length, 2.5, 6) : 3.5;
@@ -66,7 +77,11 @@ export async function renderVideo(
 
     // 4. Publish the result.
     const videoUrl = await publish(finalPath);
-    return { videoUrl, usedFal };
+    console.log(
+      `[strolling] render: engine=${usedFal ? "fal" : "ffmpeg-local"} voiceover=${vo.engine}`,
+    );
+    if (vo.script) console.log(`[strolling] voiceover script → ${vo.script}`);
+    return { videoUrl, usedFal, voiceoverEngine: vo.engine, cleanedScript: vo.script };
   } finally {
     await rm(work, { recursive: true, force: true }).catch(() => {});
   }
@@ -75,26 +90,49 @@ export async function renderVideo(
 async function buildVoiceover(
   input: RenderInput,
   work: string,
-): Promise<string | null> {
-  const out = path.join(work, "voice.m4a");
-
-  // 1. Narration provided by another part (e.g. ElevenLabs) — use it verbatim.
+): Promise<Voiceover> {
+  // 1. Narration provided by another part — use it verbatim.
   if (input.voiceoverUrl) {
-    return ff.download(input.voiceoverUrl, out);
+    const out = path.join(work, "voice.mp3");
+    await ff.download(input.voiceoverUrl, out);
+    return { path: out, engine: "provided" };
   }
-  // 2. fal TTS, if a model is configured.
-  const script = input.script.trim();
-  if (script && falApi.isFalEnabled() && config.falTtsModel) {
-    const url = await falApi.textToSpeech(script);
-    if (url) return ff.download(url, out);
+
+  const raw = input.script.trim();
+  if (!raw) return { path: null, engine: "none" };
+
+  // 2. Clean the raw transcript into a voiceover-worthy script.
+  const cleaned = await cleanScript(raw);
+  const text = cleaned.text || raw;
+
+  // 3. ElevenLabs speaks the cleaned script (preferred).
+  if (elevenlabs.isElevenLabsEnabled()) {
+    try {
+      const mp3 = await elevenlabs.synthesizeSpeech(text);
+      const out = path.join(work, "voice.mp3");
+      await writeFile(out, mp3);
+      return { path: out, engine: `elevenlabs (clean:${cleaned.cleanedBy})`, script: text };
+    } catch (err) {
+      console.warn("[strolling] ElevenLabs TTS failed, falling back:", (err as Error).message);
+    }
   }
-  // 3. Local macOS `say` so the mock script is audible with zero keys.
-  if (script) {
-    const said = await ff.sayVoiceover(script, out);
-    if (said) return said;
+
+  // 4. fal TTS, if a model is configured.
+  if (falApi.isFalEnabled() && config.falTtsModel) {
+    const url = await falApi.textToSpeech(text);
+    if (url) {
+      const out = path.join(work, "voice.mp3");
+      await ff.download(url, out);
+      return { path: out, engine: `fal-tts (clean:${cleaned.cleanedBy})`, script: text };
+    }
   }
-  // 4. No narration — the video is composed silent.
-  return null;
+
+  // 5. Local macOS `say` so narration works with zero keys.
+  const said = await ff.sayVoiceover(text, path.join(work, "voice.m4a"));
+  if (said) return { path: said, engine: `say (clean:${cleaned.cleanedBy})`, script: text };
+
+  // 6. No narration — the video is composed silent.
+  return { path: null, engine: "none", script: text };
 }
 
 async function buildClip(

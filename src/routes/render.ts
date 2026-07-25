@@ -50,12 +50,10 @@ renderRouter.post("/", async (req, res, next) => {
       return;
     }
 
-    const { videoUrl, usedFal } = await renderVideo(input);
+    const { videoUrl, usedFal, voiceoverEngine } = await renderVideo(input);
     res.setHeader("x-render-engine", usedFal ? "fal" : "ffmpeg-local");
-    res.setHeader(
-      "x-render-inputs",
-      media.length > 0 ? "creator" : "mock",
-    );
+    res.setHeader("x-render-inputs", media.length > 0 ? "creator" : "mock");
+    res.setHeader("x-voiceover-engine", voiceoverEngine);
     const result: RenderResult = { videoUrl };
     res.json(result);
   } catch (err) {
