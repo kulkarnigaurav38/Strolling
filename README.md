@@ -33,10 +33,32 @@ npm run build && npm start
 | `GET  /health`           | —                                 | `{ ok, mock }`                       | —       |
 | `POST /api/tasks`        | `{ business }`                    | `Task[]` (the 5 shots)               | COMMIT-3 |
 | `POST /api/media/upload` | multipart `file`                  | `{ mediaUrl }`                       | COMMIT-3 |
-| `POST /api/render`       | `{ captures, reviews, business }` | `{ videoUrl }`                       | COMMIT-4 |
+| `POST /api/render`       | `{ captures, reviews, business }` | `{ videoUrl }`                       | COMMIT-4 ✅ |
 | `POST /api/publish`      | `{ videoUrl, transcript }`        | `{ postUrl, caption, hashtags }`     | COMMIT-5 |
 
 `/mock/sample.mp4` is served statically so a mocked `videoUrl` actually resolves.
+
+### Render pipeline (`POST /api/render`)
+
+Turns the creator's **pictures + voiceover script** into a vertical video: photos →
+fal image-to-video, clips normalized, narration muxed, then concatenated and uploaded.
+Real `captures`/`reviews` from the request are used when present; otherwise mock
+pictures + a mock script stand in (`src/lib/mockAssets.ts`) — **real data always wins**.
+
+- `MOCK=1` (default) → instant `/mock/sample.mp4`. Add `?force=1` to run the pipeline once.
+- `MOCK=0` → always runs. With `FAL_KEY` it uses **fal** (image-to-video + storage);
+  without a key it falls back to a **local ffmpeg** render (Ken Burns + macOS `say`
+  narration), served from `/renders/*`. Requires `ffmpeg`/`ffprobe` on `PATH`.
+
+```bash
+# real pipeline, no keys needed (local ffmpeg + say):
+MOCK=0 npm run dev
+curl -s -X POST localhost:3000/api/render -d '{}' -H 'content-type: application/json'
+# → { "videoUrl": "/renders/render-<uuid>.mp4" }  (GET it to watch)
+```
+
+See [CLAUDE.md](./CLAUDE.md#render-pipeline-the-post-creation-workflow--srcservicesrenderpipelinets)
+for the full design.
 
 ### Try it
 
@@ -60,8 +82,15 @@ src/
     director.ts         DIRECTOR_SYSTEM_PROMPT
     mock.ts             latency helper
   routes/               tasks · render · publish · media
+  services/
+    renderPipeline.ts   the post-creation workflow (fal i2v + ffmpeg compose)
+  lib/
+    fal.ts              fal client wrapper (image-to-video, storage, TTS)
+    ffmpeg.ts           local media plumbing (normalize, concat, mux, narration)
+    mockAssets.ts       MOCK_SCRIPT + mock pictures (fallback inputs)
   middleware/           errorHandler
 public/mock/sample.mp4  stand-in rendered film
+public/mock/pictures/   mock stills for the render pipeline
 frontend/               Flutter client (see frontend/README.md)
 ```
 

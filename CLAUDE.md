@@ -64,24 +64,58 @@ There is no test runner yet; verify changes by hitting the endpoints with `curl`
 | ------------------------ | -------------------------------- | -------- | -------------------------------------------------- |
 | `POST /api/tasks`        | `FALLBACK_TASKS` after 800ms     | COMMIT-3 | Anthropic generates the shot list from the business |
 | `POST /api/media/upload` | mock storage URL                 | COMMIT-3 | `fal.storage.upload` → durable URL                 |
-| `POST /api/render`       | `/mock/sample.mp4` after 3s      | COMMIT-4 | fal image-to-video + ffmpeg compose + narration    |
+| `POST /api/render`       | see **Render pipeline** below    | COMMIT-4 ✅ | fal image-to-video + ffmpeg compose + narration    |
 | `POST /api/publish`      | canned caption/hashtags + mock URL | COMMIT-5 | n8n webhook → YouTube Short                         |
 
 The Regisseur voice agent (ElevenLabs) is **COMMIT-2** and lives on the frontend
 (conversational WebSocket); the backend only holds the shared `DIRECTOR_SYSTEM_PROMPT`.
 
+## Render pipeline (the post-creation workflow) — `src/services/renderPipeline.ts`
+
+Turns the creator's **pictures + voiceover script** into a finished vertical video:
+
+```
+photo → fal image-to-video (animated clip)        ┐
+clip  → normalized as-is                          ├─ concat → mux narration → upload → { videoUrl }
+script → narration (fal TTS / macOS say / none)   ┘
+```
+
+- **Inputs (real vs mock):** the route (`routes/render.ts`) builds the input from the
+  request — `captures` → media, `reviews[].transcript` → script. **Real creator data always
+  wins;** when a field is missing it falls back to `lib/mockAssets.ts` (`MOCK_MEDIA`,
+  `MOCK_SCRIPT`). Nothing here changes when the capture/interview parts land — they just
+  start sending `captures` + `reviews`.
+- **fal vs local:** if `FAL_KEY` is set, photos go through `fal.subscribe(FAL_I2V_MODEL)` and
+  the result uploads to fal storage. With no key it degrades to a **local ffmpeg** render
+  (Ken Burns stills + macOS `say` narration), served from `public/renders/` — so it runs and
+  is testable with zero keys. `lib/fal.ts` isolates all fal calls; `lib/ffmpeg.ts` the media
+  plumbing.
+- **Narration precedence:** `voiceoverUrl` in the body (e.g. from the ElevenLabs part) →
+  fal TTS (`FAL_TTS_MODEL`, opt-in) → macOS `say` (dev) → silent.
+- **Run behaviour:** `MOCK=1` (default) returns the pre-baked `/mock/sample.mp4` instantly;
+  `?force=1` runs the real pipeline once; `MOCK=0` always runs it. Response headers
+  `x-render-engine` (`fal` | `ffmpeg-local`) and `x-render-inputs` (`creator` | `mock`) say
+  what happened.
+
+To go fully real: `FAL_KEY=… MOCK=0 npm run dev`, optionally set `FAL_I2V_MODEL` /
+`FAL_TTS_MODEL`. The fal response-shape extraction in `lib/fal.ts` is defensive — adjust it
+to the exact model you pick.
+
 ## Environment
 
 All optional while mocked. See `.env.example`. Keys: `PORT`, `MOCK`, `ANTHROPIC_API_KEY`,
-`FAL_KEY`, `ELEVENLABS_AGENT_ID`, `ELEVENLABS_API_KEY`, `N8N_WEBHOOK_URL`. `.env` is
-gitignored — never commit real keys.
+`FAL_KEY`, `FAL_I2V_MODEL`, `FAL_TTS_MODEL`, `PUBLIC_BASE_URL`, `ELEVENLABS_AGENT_ID`,
+`ELEVENLABS_API_KEY`, `N8N_WEBHOOK_URL`. `.env` is gitignored — never commit real keys.
+
+Runtime note: the render pipeline shells out to **ffmpeg/ffprobe** (and macOS `say` for the
+dev narration fallback) — they must be on `PATH`.
 
 ## Commit roadmap
 
-- **1** ✅ backend skeleton, all routes mocked (this commit)
+- **1** ✅ backend skeleton, all routes mocked
 - **2** the Regisseur agent live (frontend WS; backend shares the prompt)
 - **3** fal storage for uploads + Claude-generated tasks
-- **4** real render (fal i2v + ffmpeg compose, real-voice narration)
+- **4** ✅ render pipeline: fal image-to-video + ffmpeg compose + narration (local fallback)
 - **5** n8n publish → YouTube Short
 - **6** venue hardening + polish
 

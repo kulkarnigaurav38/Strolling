@@ -1,0 +1,127 @@
+import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+
+// Local media plumbing for the render pipeline: normalize every source into a
+// uniform portrait clip, concatenate, and mux narration. Uses the system ffmpeg
+// (no extra runtime dependency).
+
+const run = promisify(execFile);
+
+export const WIDTH = 1080;
+export const HEIGHT = 1920;
+export const FPS = 30;
+
+export function isRemote(s: string): boolean {
+  return /^https?:\/\//i.test(s);
+}
+
+export async function makeWorkDir(): Promise<string> {
+  return mkdtemp(path.join(os.tmpdir(), "strolling-render-"));
+}
+
+export async function download(url: string, dest: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download ${url} → HTTP ${res.status}`);
+  await writeFile(dest, Buffer.from(await res.arrayBuffer()));
+  return dest;
+}
+
+export async function probeDuration(file: string): Promise<number> {
+  const { stdout } = await run("ffprobe", [
+    "-v", "error",
+    "-show_entries", "format=duration",
+    "-of", "default=noprint_wrappers=1:nokey=1",
+    file,
+  ]);
+  const d = Number.parseFloat(stdout.trim());
+  return Number.isFinite(d) ? d : 0;
+}
+
+const COVER = (w: number, h: number) =>
+  `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
+
+/** A still image → a portrait clip with a gentle Ken Burns zoom. */
+export async function imageToClip(
+  image: string,
+  out: string,
+  seconds: number,
+): Promise<string> {
+  const frames = Math.max(1, Math.round(seconds * FPS));
+  const zoomVf =
+    `${COVER(Math.round(WIDTH * 1.5), Math.round(HEIGHT * 1.5))},` +
+    `zoompan=z='min(zoom+0.0012,1.12)':d=${frames}:s=${WIDTH}x${HEIGHT}:fps=${FPS},` +
+    `format=yuv420p`;
+  const base = ["-y", "-loop", "1", "-i", image, "-t", String(seconds), "-r", String(FPS)];
+  const enc = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", out];
+  try {
+    await run("ffmpeg", [...base, "-vf", zoomVf, ...enc]);
+  } catch {
+    // zoompan can be finicky — fall back to a static (still) clip.
+    await run("ffmpeg", [...base, "-vf", `${COVER(WIDTH, HEIGHT)},format=yuv420p`, ...enc]);
+  }
+  return out;
+}
+
+/** An existing video (fal clip or the creator's own clip) → a normalized portrait clip. */
+export async function normalizeClip(
+  input: string,
+  out: string,
+  seconds: number,
+): Promise<string> {
+  await run("ffmpeg", [
+    "-y", "-i", input, "-t", String(seconds), "-r", String(FPS),
+    "-vf", `${COVER(WIDTH, HEIGHT)},format=yuv420p`,
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", out,
+  ]);
+  return out;
+}
+
+/** Concatenate identically-encoded clips (stream copy). */
+export async function concat(
+  clips: string[],
+  out: string,
+  workDir: string,
+): Promise<string> {
+  const list = path.join(workDir, "concat.txt");
+  await writeFile(
+    list,
+    clips.map((c) => `file '${c.replace(/'/g, "'\\''")}'`).join("\n"),
+  );
+  await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", out]);
+  return out;
+}
+
+/** Mux a single narration track onto the video (or copy through if none). */
+export async function mux(
+  video: string,
+  audio: string | null,
+  out: string,
+): Promise<string> {
+  if (!audio) {
+    await run("ffmpeg", ["-y", "-i", video, "-c", "copy", out]);
+    return out;
+  }
+  await run("ffmpeg", [
+    "-y", "-i", video, "-i", audio,
+    "-map", "0:v:0", "-map", "1:a:0",
+    "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+    "-shortest", out,
+  ]);
+  return out;
+}
+
+/** macOS `say` narration — a dev fallback so the mock script is audible with no keys. */
+export async function sayVoiceover(text: string, out: string): Promise<string | null> {
+  try {
+    const aiff = path.join(path.dirname(out), `say-${randomUUID()}.aiff`);
+    await run("say", ["-o", aiff, text]);
+    await run("ffmpeg", ["-y", "-i", aiff, "-c:a", "aac", "-b:a", "160k", out]);
+    return out;
+  } catch {
+    return null; // not macOS / `say` unavailable
+  }
+}

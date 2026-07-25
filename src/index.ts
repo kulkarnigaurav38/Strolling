@@ -16,6 +16,8 @@ export function createApp(): express.Express {
 
   // Serve the mock render output so /api/render's videoUrl actually resolves.
   app.use("/mock", express.static(path.join(__dirname, "..", "public", "mock")));
+  // Serve locally-rendered videos (fal-less fallback output).
+  app.use("/renders", express.static(config.rendersDir));
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, mock: config.mock });

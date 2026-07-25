@@ -1,23 +1,64 @@
 import { Router } from "express";
 import { config } from "../config";
-import { delay } from "../lib/mock";
+import { MOCK_MEDIA, MOCK_SCRIPT } from "../lib/mockAssets";
 import type { RenderRequest, RenderResult } from "../lib/types";
+import {
+  renderVideo,
+  type MediaItem,
+  type RenderInput,
+} from "../services/renderPipeline";
 
 export const renderRouter = Router();
 
-// POST /api/render { captures, reviews, business } → { videoUrl }
-renderRouter.post("/", async (req, res) => {
-  const body = (req.body ?? {}) as Partial<RenderRequest>;
+// POST /api/render { captures, reviews, business, voiceoverUrl? } → { videoUrl }
+//
+// Behaviour:
+//   MOCK=1 (default)          → instant pre-baked /mock/sample.mp4 (unblocks teammates)
+//   MOCK=1 with ?force=1       → run the real pipeline once (dev)
+//   MOCK=0                     → always run the real pipeline
+//
+// Inputs: the creator's `captures` + `reviews` are used when present; otherwise the
+// mock pictures + mock script stand in. Real data always wins — nothing to change
+// here when the capture/interview parts land.
+renderRouter.post("/", async (req, res, next) => {
+  try {
+    const body = (req.body ?? {}) as Partial<RenderRequest> & {
+      voiceoverUrl?: string;
+    };
 
-  if (config.mock) {
-    await delay(3000); // stand in for the real render pipeline's runtime
-    const result: RenderResult = { videoUrl: "/mock/sample.mp4" };
+    const media: MediaItem[] = (body.captures ?? [])
+      .filter((c) => c && c.mediaUrl)
+      .map((c) => ({ url: c.mediaUrl, kind: c.kind }));
+
+    const script = (body.reviews ?? [])
+      .map((r) => r?.transcript)
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    const input: RenderInput = {
+      media: media.length > 0 ? media : MOCK_MEDIA,
+      script: script || MOCK_SCRIPT,
+      business: body.business,
+      voiceoverUrl: body.voiceoverUrl,
+    };
+
+    // Fast path for teammates who just need a valid response shape.
+    if (config.mock && req.query.force === undefined) {
+      const result: RenderResult = { videoUrl: "/mock/sample.mp4" };
+      res.json(result);
+      return;
+    }
+
+    const { videoUrl, usedFal } = await renderVideo(input);
+    res.setHeader("x-render-engine", usedFal ? "fal" : "ffmpeg-local");
+    res.setHeader(
+      "x-render-inputs",
+      media.length > 0 ? "creator" : "mock",
+    );
+    const result: RenderResult = { videoUrl };
     res.json(result);
-    return;
+  } catch (err) {
+    next(err);
   }
-
-  // TODO(COMMIT-4): fal image-to-video on each capture, ffmpeg compose to a
-  // vertical cut, lay real-voice narration from the reviews, upload, return URL.
-  void body;
-  res.status(501).json({ error: "not_implemented", route: "render" });
 });
