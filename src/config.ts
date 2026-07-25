@@ -42,8 +42,15 @@ export const config = {
 
   // --- Supabase: where finished reels are stored + jobs are tracked ---
   supabaseUrl: process.env.SUPABASE_URL ?? "",
-  /** Service-role key (backend only — bypasses RLS). NEVER expose to the frontend. */
-  supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+  /**
+   * Backend key that bypasses RLS. Accepts the new secret key (`sb_secret_…`,
+   * env SUPABASE_SECRET_KEY) or the legacy service-role JWT
+   * (SUPABASE_SERVICE_ROLE_KEY). NEVER expose to the frontend.
+   */
+  supabaseServiceKey:
+    process.env.SUPABASE_SECRET_KEY ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    "",
   supabaseTable: process.env.SUPABASE_TABLE ?? "reels",
   supabaseReelsBucket: process.env.SUPABASE_REELS_BUCKET ?? "reels",
   supabaseCapturesBucket: process.env.SUPABASE_CAPTURES_BUCKET ?? "captures",
