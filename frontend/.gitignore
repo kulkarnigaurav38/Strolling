@@ -1,0 +1,28 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Generated platform folders — regenerate with `flutter create .`
+# (kept out so this commit stays pure Dart; see README)
+/android/
+/ios/
+/linux/
+/macos/
+/windows/
+/web/
+
+# Secrets
+dart_defines.json
+*.env
+
+# OS
+.DS_Store

@@ -4,8 +4,10 @@
 
 The API behind Strolling: a guided micro-shoot where der Regisseur (a warm German
 film director) walks a creator through five shots of a place, interviews them, then
-cuts, captions, and publishes a vertical mini-doc. This repo is the **backend skeleton**
-— the frontend is built separately from a Figma design.
+cuts, captions, and publishes a vertical mini-doc.
+
+**Monorepo:** the **backend API** is at the repo root; **[`frontend/`](./frontend)** is the
+Flutter client (its own README). A Figma design is the frontend's visual reference.
 
 ## Tracer bullet
 
@@ -60,6 +62,7 @@ src/
   routes/               tasks · render · publish · media
   middleware/           errorHandler
 public/mock/sample.mp4  stand-in rendered film
+frontend/               Flutter client (see frontend/README.md)
 ```
 
 See [CLAUDE.md](./CLAUDE.md) for architecture and the full commit roadmap.

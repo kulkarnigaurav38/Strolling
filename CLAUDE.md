@@ -9,8 +9,13 @@ with a published vertical mini-doc.* A warm German film director persona ("der R
 directs the creator through five shots, interviews them, then the pipeline renders and
 publishes the film.
 
-This repo is the **backend API only**. The frontend is built separately from a Figma
-design and consumes these endpoints — do **not** add UI here.
+This is a **monorepo**:
+
+- **backend API** at the repository root (`src/`, `package.json`, …) — the focus of this file.
+- **`frontend/`** — the Flutter (Dart) client, with its own tooling and `frontend/README.md`.
+
+The guidance below is for the **backend**. Don't add UI to the backend (`src/`) — it belongs
+in `frontend/`. The frontend also has a Figma design as its visual reference.
 
 ## Core principle: tracer bullet
 
@@ -80,9 +85,19 @@ gitignored — never commit real keys.
 - **5** n8n publish → YouTube Short
 - **6** venue hardening + polish
 
+## Frontend (`frontend/`)
+
+Flutter (Dart) tracer-bullet client that realizes the same product. It is currently
+**fully mocked** (runs with zero backend) — its `ApiClient` returns local mock data. Wiring
+it to this backend (set `FERNWEH_MOCK=false` and point the API base URL at the server) is
+future work. Build/tooling notes live in `frontend/README.md`. It uses relative imports,
+Riverpod + go_router, and one `ThemeData`. Platform folders are git-ignored and regenerated
+with `flutter create .` — see that README.
+
 ## Conventions
 
 - Keep the diff small and the mock branch alive when adding a real integration.
 - Match the existing style: one router per resource, typed request/response via
   `src/lib/types.ts`, `config` for anything environmental.
-- Don't add a database, auth, or a frontend unless a task explicitly calls for it.
+- Don't add a database or auth unless a task explicitly calls for it. Keep backend and
+  frontend contracts in sync (`src/lib/types.ts` ↔ `frontend/lib/core/models.dart`).

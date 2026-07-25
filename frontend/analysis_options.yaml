@@ -1,0 +1,11 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # keep the tree honest but don't block the tracer bullet on style nits
+    prefer_const_constructors: ignore
+
+linter:
+  rules:
+    prefer_const_constructors: false
+    avoid_print: false
