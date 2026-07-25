@@ -51,12 +51,12 @@ export async function renderVideo(
     const perClip =
       audioDur > 0 ? clamp(audioDur / input.media.length, 2.5, 6) : 3.5;
 
-    // 2. Each media item → a normalized portrait clip.
-    const clips: string[] = [];
-    for (let i = 0; i < input.media.length; i++) {
-      const out = path.join(work, `clip_${i}.mp4`);
-      clips.push(await buildClip(input.media[i], out, perClip, work, input));
-    }
+    // 2. Each media item → a normalized portrait clip (concurrent; order preserved).
+    const clips = await Promise.all(
+      input.media.map((item, i) =>
+        buildClip(item, path.join(work, `clip_${i}.mp4`), perClip, work, input),
+      ),
+    );
 
     // 3. Concatenate, then lay the narration.
     const silentVideo = path.join(work, "video.mp4");
