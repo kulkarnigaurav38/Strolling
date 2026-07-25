@@ -11,10 +11,12 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check:fal": "tsx scripts/checkFal.ts"
+    "check:fal": "tsx scripts/checkFal.ts",
+    "check:supabase": "tsx scripts/checkSupabase.ts"
   },
   "dependencies": {
     "@fal-ai/client": "^1.2.1",
+    "@supabase/supabase-js": "^2.110.8",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",

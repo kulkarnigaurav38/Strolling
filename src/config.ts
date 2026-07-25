@@ -39,6 +39,14 @@ export const config = {
   rendersDir: path.join(process.cwd(), "public", "renders"),
   /** Absolute base for returned URLs (e.g. https://api.strolling.app). Empty → relative. */
   publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "",
+
+  // --- Supabase: where finished reels are stored + jobs are tracked ---
+  supabaseUrl: process.env.SUPABASE_URL ?? "",
+  /** Service-role key (backend only — bypasses RLS). NEVER expose to the frontend. */
+  supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+  supabaseTable: process.env.SUPABASE_TABLE ?? "reels",
+  supabaseReelsBucket: process.env.SUPABASE_REELS_BUCKET ?? "reels",
+  supabaseCapturesBucket: process.env.SUPABASE_CAPTURES_BUCKET ?? "captures",
 };
 
 export type Config = typeof config;

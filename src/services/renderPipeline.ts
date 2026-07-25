@@ -6,6 +6,7 @@ import * as elevenlabs from "../lib/elevenlabs";
 import * as falApi from "../lib/fal";
 import * as ff from "../lib/ffmpeg";
 import { cleanScript } from "../lib/scriptCleaner";
+import * as supabase from "../lib/supabase";
 import type { Business } from "../lib/types";
 
 // The post-creation (render) workflow, synced shot by shot.
@@ -272,17 +273,19 @@ async function buildShotAudio(
 }
 
 async function publish(finalPath: string): Promise<string> {
-  // fal storage → durable URL.
-  if (falApi.isFalEnabled()) {
-    return falApi.uploadToStorage(
-      await readFile(finalPath),
-      `strolling-${randomUUID()}.mp4`,
-    );
+  const name = `strolling-${randomUUID()}.mp4`;
+
+  // 1. Supabase reels bucket — the app's real destination.
+  if (supabase.isSupabaseEnabled()) {
+    return supabase.uploadReel(await readFile(finalPath), name);
   }
-  // ⚠️ FALLBACK (no FAL_KEY): save locally and serve from /renders instead of
-  // uploading to fal storage. Fine for dev; not durable for production.
+  // 2. fal storage → durable URL (when Supabase isn't configured).
+  if (falApi.isFalEnabled()) {
+    return falApi.uploadToStorage(await readFile(finalPath), name);
+  }
+  // ⚠️ FALLBACK (no Supabase / no FAL_KEY): save locally and serve from /renders.
+  // Fine for dev; not durable for production.
   await mkdir(config.rendersDir, { recursive: true });
-  const name = `render-${randomUUID()}.mp4`;
   const dest = path.join(config.rendersDir, name);
   try {
     await rename(finalPath, dest);

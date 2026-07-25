@@ -34,7 +34,8 @@ integration. This keeps the backend runnable and the frontend unblocked at every
 | Piece | State | To make real / where |
 | ----- | ----- | -------------------- |
 | **Render — image-to-video** | ✅ REAL (fal) | needs `FAL_KEY` + `MOCK=0`; `src/lib/fal.ts` |
-| **Render — storage upload** | ✅ REAL (fal) | `uploadToStorage` in `src/lib/fal.ts` |
+| **Reel output storage** | ✅ REAL | Supabase `reels` bucket → fal → local (`publish()`) |
+| **Async job flow** | ✅ REAL | `POST /api/render {jobId}` reads/writes a Supabase row; needs `SUPABASE_*` |
 | **Voiceover — script cleaning** | ✅ REAL (fal LLM) | `src/lib/scriptCleaner.ts` (`FAL_LLM_MODEL`) |
 | **Voiceover — TTS** | ✅ REAL (ElevenLabs) | `src/lib/elevenlabs.ts` (`ELEVENLABS_API_KEY`) |
 | **Render inputs (shots)** | ⚠️ MOCK when absent | send real `captures`+`reviews`; `src/lib/mockAssets.ts` |
@@ -125,6 +126,17 @@ shot i:  photo  → fal image-to-video ┐  clip fit to |audio_i|
   `x-render-shots`, and `x-voiceover-engine` (e.g. `elevenlabs (clean:fal-llm)`) report
   what happened. The server logs each shot's duration + cleaned part.
 
+### Supabase job flow
+
+`POST /api/render` accepts `{ jobId }`: it reads the job row (Supabase, service role),
+renders in the **background** (renders take minutes → responds `202` immediately), uploads the
+finished mp4 to the `reels` bucket, and writes `{ status:'done', video_url }` back to the row.
+The frontend uploads captures to the `captures` bucket, inserts a `reels` row with per-shot
+`shots` jsonb, POSTs `{ jobId }`, and watches the row via Realtime. `src/lib/supabase.ts`
+holds the client; `supabase/schema.sql` creates the buckets + table. The old direct payload
+(`{ captures, reviews, business }`) still works for testing. `npm run check:supabase` verifies
+setup. If `SUPABASE_*` is unset, the reel just falls back to fal/local storage.
+
 To go fully real: `FAL_KEY=… ELEVENLABS_API_KEY=… MOCK=0 npm run dev`. The fal response-shape
 extraction in `lib/fal.ts` is defensive — adjust it to the exact model you pick.
 
@@ -133,8 +145,9 @@ extraction in `lib/fal.ts` is defensive — adjust it to the exact model you pic
 All optional while mocked. See `.env.example`. Keys: `PORT`, `MOCK`, `ANTHROPIC_API_KEY`,
 `FAL_KEY`, `FAL_I2V_MODEL`, `FAL_I2V_DURATION`, `FAL_TTS_MODEL`, `FAL_LLM_MODEL`,
 `CLEAN_SCRIPT`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`,
-`ELEVENLABS_AGENT_ID`, `PUBLIC_BASE_URL`, `N8N_WEBHOOK_URL`. `.env` is gitignored — never
-commit real keys.
+`ELEVENLABS_AGENT_ID`, `PUBLIC_BASE_URL`, `N8N_WEBHOOK_URL`, `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_TABLE`, `SUPABASE_REELS_BUCKET`,
+`SUPABASE_CAPTURES_BUCKET`. `.env` is gitignored — never commit real keys.
 
 Runtime note: the render pipeline shells out to **ffmpeg/ffprobe** (and macOS `say` for the
 dev narration fallback) — they must be on `PATH`.

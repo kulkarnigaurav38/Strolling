@@ -88,6 +88,7 @@ src/
     renderPipeline.ts   the post-creation workflow (fal i2v + ffmpeg compose)
   lib/
     fal.ts              fal client wrapper (image-to-video, storage, LLM, TTS)
+    supabase.ts         Supabase jobs + reels storage (service role)
     elevenlabs.ts       ElevenLabs text-to-speech (the narration voice)
     scriptCleaner.ts    raw script part → polished voiceover text (fal LLM / heuristic)
     ffmpeg.ts           media plumbing (fit-to-duration, concat, mux, narration)
@@ -95,6 +96,7 @@ src/
   middleware/           errorHandler
 public/mock/sample.mp4  stand-in rendered film
 public/mock/pictures/   mock stills for the render pipeline
+supabase/schema.sql     Supabase buckets + jobs table setup (run once)
 frontend/               Flutter client (see frontend/README.md)
 ```
 
