@@ -125,3 +125,73 @@ export async function sayVoiceover(text: string, out: string): Promise<string | 
     return null; // not macOS / `say` unavailable
   }
 }
+
+// --- per-shot helpers: keep every narration part and its clip the same length ---
+
+/** Uniform silence (44.1k stereo AAC) — a silent beat for a shot with no script. */
+export async function silence(seconds: number, out: string): Promise<string> {
+  await run("ffmpeg", [
+    "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+    "-t", String(seconds), "-ar", "44100", "-ac", "2",
+    "-c:a", "aac", "-b:a", "160k", out,
+  ]);
+  return out;
+}
+
+/** Normalize a narration part to uniform AAC (so parts concat cleanly) and add a
+ *  short trailing pause so shots don't run into each other. */
+export async function padAndNormalizeAudio(
+  input: string,
+  out: string,
+  padSeconds: number,
+): Promise<string> {
+  const args = ["-y", "-i", input];
+  if (padSeconds > 0) args.push("-af", `apad=pad_dur=${padSeconds}`);
+  args.push("-ar", "44100", "-ac", "2", "-c:a", "aac", "-b:a", "160k", out);
+  await run("ffmpeg", args);
+  return out;
+}
+
+/** Concatenate narration parts (identical AAC params → stream copy). */
+export async function concatAudio(
+  parts: string[],
+  out: string,
+  workDir: string,
+): Promise<string> {
+  const list = path.join(workDir, "concat-audio.txt");
+  await writeFile(
+    list,
+    parts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"),
+  );
+  await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", out]);
+  return out;
+}
+
+/**
+ * Render a source (fal clip, creator clip, or Ken Burns still) into a portrait
+ * clip of EXACTLY `target` seconds: trim if it's longer, freeze the last frame if
+ * it's shorter. This is what keeps each shot the length of its narration part.
+ */
+export async function renderClipToDuration(
+  input: string,
+  out: string,
+  target: number,
+): Promise<string> {
+  const raw = await probeDuration(input);
+  const enc = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", out];
+  if (target <= raw + 0.06) {
+    await run("ffmpeg", [
+      "-y", "-i", input, "-t", target.toFixed(3), "-r", String(FPS),
+      "-vf", `${COVER(WIDTH, HEIGHT)},format=yuv420p`, ...enc,
+    ]);
+  } else {
+    const pad = (target - raw).toFixed(3);
+    await run("ffmpeg", [
+      "-y", "-i", input, "-r", String(FPS),
+      "-vf",
+      `${COVER(WIDTH, HEIGHT)},tpad=stop_mode=clone:stop_duration=${pad},format=yuv420p`,
+      "-t", target.toFixed(3), ...enc,
+    ]);
+  }
+  return out;
+}

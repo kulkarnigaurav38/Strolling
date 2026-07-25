@@ -72,38 +72,43 @@ The Regisseur voice agent (ElevenLabs) is **COMMIT-2** and lives on the frontend
 
 ## Render pipeline (the post-creation workflow) — `src/services/renderPipeline.ts`
 
-Turns the creator's **pictures/clips + a raw voiceover script** into a finished vertical video:
+Turns the creator's **shots** — each a photo/clip plus its own **script part** — into a
+finished vertical video where every part's voiceover plays over its own shot:
 
 ```
-photo      → fal image-to-video (animated clip)      ┐
-clip       → normalized as-is                        ├─ concat → mux narration → upload → { videoUrl }
-raw script → LLM clean → ElevenLabs voice (audio)    ┘
+shot i:  photo  → fal image-to-video ┐  clip fit to |audio_i|
+         clip   → normalized         ├──────────────────────► concat clips
+         part_i → LLM clean → ElevenLabs voice → audio_i ────► concat audio → mux → upload
 ```
 
-- **Inputs (real vs mock):** the route (`routes/render.ts`) builds the input from the
-  request — `captures` → media, `reviews[].transcript` → script. **Real creator data always
-  wins;** when a field is missing it falls back to `lib/mockAssets.ts` (`MOCK_MEDIA`,
-  `MOCK_SCRIPT`). Nothing here changes when the capture/interview parts land — they just
-  start sending `captures` + `reviews`.
+- **Shots (the key model):** the script arrives in PARTS, one per photo. The route pairs each
+  `reviews[]` entry to its `captures[]` entry by **`taskId`** into a `Shot { media, script }`.
+  For each shot the clip is rendered to **exactly** the length of that shot's narration
+  (`renderClipToDuration` — trim if longer, freeze-frame if shorter), so shot 1's voiceover
+  starts and ends with shot 1, then shot 2, and so on. Concatenating clips and audio parts
+  (both in shot order, equal per-shot lengths) keeps them locked in sync.
+- **Inputs (real vs mock):** **real creator data always wins;** with no `captures`, the mock
+  shots in `lib/mockAssets.ts` (`MOCK_SHOTS`) stand in. Nothing here changes when the
+  capture/interview parts land — they just start sending `captures` + `reviews`.
 - **fal vs local:** if `FAL_KEY` is set, photos go through `fal.subscribe(FAL_I2V_MODEL)` and
   the result uploads to fal storage. With no key it degrades to a **local ffmpeg** render
-  (Ken Burns stills + macOS `say` narration), served from `public/renders/` — so it runs and
-  is testable with zero keys. `lib/fal.ts` isolates all fal calls; `lib/ffmpeg.ts` the media
-  plumbing.
-- **Voiceover (the raw script → nice narration):** `lib/scriptCleaner.ts` sends the raw,
-  rambling transcript through a fal-hosted LLM (`FAL_LLM_MODEL`) to produce a crisp, ~40-70
-  word first-person script (set `CLEAN_SCRIPT=0` to skip). `lib/elevenlabs.ts` then speaks it
-  (`ELEVENLABS_VOICE_ID` / `ELEVENLABS_MODEL`). ElevenLabs is voice-only — the *cleaning* is
-  the LLM step, not ElevenLabs.
-- **Narration precedence:** `voiceoverUrl` in the body (a pre-made track) →
-  **ElevenLabs** (clean via fal LLM, then TTS) → fal TTS (`FAL_TTS_MODEL`) → macOS `say`
-  (dev) → silent.
-- **Ordering:** the voiceover is built first (clean+TTS is seconds) because its length paces
-  the clips; the per-picture fal jobs then run **concurrently** (`Promise.all`).
+  (Ken Burns stills + macOS `say` narration), served from `public/renders/`. `lib/fal.ts`
+  isolates fal calls; `lib/ffmpeg.ts` the media plumbing.
+- **Voiceover (raw part → nice narration):** per shot, `lib/scriptCleaner.ts` cleans the raw
+  part via a fal-hosted LLM (`FAL_LLM_MODEL`, `CLEAN_SCRIPT=0` to skip), then
+  `lib/elevenlabs.ts` speaks it (`ELEVENLABS_VOICE_ID` / `ELEVENLABS_MODEL`). ElevenLabs is
+  voice-only — the *cleaning* is the LLM step, not ElevenLabs.
+- **Narration precedence (per shot):** empty part → silent beat; else
+  **ElevenLabs** (clean → TTS) → fal TTS (`FAL_TTS_MODEL`) → macOS `say` → silent.
+  A whole-video `voiceoverUrl` in the body bypasses per-shot TTS (even pacing instead).
+- **Ordering:** within a shot the fal video job and the narration run **concurrently**
+  (`Promise.all`); the clip is fit once the audio length is known. Shots run concurrently too.
+  A ~0.35s pause is appended to each part so shots don't run into each other.
 - **Run behaviour:** `MOCK=1` (default) returns the pre-baked `/mock/sample.mp4` instantly;
   `?force=1` runs the real pipeline once; `MOCK=0` always runs it. Response headers
-  `x-render-engine` (`fal` | `ffmpeg-local`), `x-render-inputs` (`creator` | `mock`), and
-  `x-voiceover-engine` (e.g. `elevenlabs (clean:fal-llm)`) report what happened.
+  `x-render-engine` (`fal` | `ffmpeg-local`), `x-render-inputs` (`creator` | `mock`),
+  `x-render-shots`, and `x-voiceover-engine` (e.g. `elevenlabs (clean:fal-llm)`) report
+  what happened. The server logs each shot's duration + cleaned part.
 
 To go fully real: `FAL_KEY=… ELEVENLABS_API_KEY=… MOCK=0 npm run dev`. The fal response-shape
 extraction in `lib/fal.ts` is defensive — adjust it to the exact model you pick.

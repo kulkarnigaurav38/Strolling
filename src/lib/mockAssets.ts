@@ -1,26 +1,41 @@
 import path from "node:path";
-import type { MediaItem } from "../services/renderPipeline";
+import type { Shot } from "../services/renderPipeline";
 
-// Stand-in inputs for the render pipeline while the capture/agent parts are still
-// in progress. The render route uses these ONLY when the request carries no real
-// captures/reviews — real creator data always wins. Replace nothing here when the
-// real parts land; just send `captures` + `reviews` in the request.
-
-/** The creator's voiceover text (what the real interview transcript will become). */
-export const MOCK_SCRIPT =
-  "So this is where sixty people are building for one day. " +
-  "The energy in here is honestly unreal — every table a different team, totally locked in. " +
-  "Watching someone pair with Cursor live, the code just pours out. " +
-  "And yes, this video literally pays for my drink. " +
-  "If you're wondering whether to come next time — come.";
+// Stand-in shots for the render pipeline while the capture/interview parts are in
+// progress. Each mock picture is paired with the raw script PART for that shot —
+// exactly the shape real data arrives in. Used only when the request carries no
+// real captures; real creator data always wins.
+//
+// The parts are intentionally raw (fillers, false starts) to exercise the LLM
+// cleaning step.
 
 const picturesDir = path.join(process.cwd(), "public", "mock", "pictures");
+const pic = (f: string) => path.join(picturesDir, f);
 
-/** Five mock stills, one per shot, shipped in public/mock/pictures/. */
-export const MOCK_MEDIA: MediaItem[] = [
-  "shot1.jpg",
-  "shot2.jpg",
-  "shot3.jpg",
-  "shot4.jpg",
-  "shot5.jpg",
-].map((f) => ({ url: path.join(picturesDir, f), kind: "photo" as const }));
+export const MOCK_SHOTS: Shot[] = [
+  {
+    media: { url: pic("shot1.jpg"), kind: "photo" },
+    script:
+      "um so this is like the entrance you know, kinda unassuming for whats going on inside",
+  },
+  {
+    media: { url: pic("shot2.jpg"), kind: "photo" },
+    script:
+      "and uh the floor, its just packed, everyone heads down coding, the energy is unreal honestly",
+  },
+  {
+    media: { url: pic("shot3.jpg"), kind: "photo" },
+    script:
+      "over here someones building live with cursor, like the code just pours out its wild",
+  },
+  {
+    media: { url: pic("shot4.jpg"), kind: "photo" },
+    script:
+      "and um the coffee corner, thats where like half the ideas actually happen i think",
+  },
+  {
+    media: { url: pic("shot5.jpg"), kind: "photo" },
+    script:
+      "and the view from up here, it honestly makes the whole day feel kinda cinematic you know",
+  },
+];
