@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/onboarding_args.dart';
 import '../../../core/router.dart';
 import '../../../core/theme.dart';
+import '../data/live_business_dashboard.dart';
 import '../data/sample_business_dashboard.dart';
 import '../widgets/business_creators_panel.dart';
 import '../widgets/business_offers_panel.dart';
@@ -26,16 +27,50 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
   BusinessTab _tab = BusinessTab.offers;
   late List<BusinessRedemption> _redemptions;
 
+  /// Live portal data; null → the API is unreachable and we render the sample
+  /// dashboard instead (never a half-empty screen on stage).
+  LiveBusinessDashboard? _live;
+  bool _loading = false;
+
   @override
   void initState() {
     super.initState();
     _redemptions = List.of(kBusinessRedemptions);
+    _refresh();
   }
+
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    final live = await LiveBusinessDashboard.fetch();
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      if (live != null) {
+        _live = live;
+        // Keep an approved/declined redemption dismissed across refreshes by
+        // only adopting server rows we haven't already acted on.
+        final dismissed = _dismissedRedemptionIds;
+        _redemptions = live.redemptions
+            .where((r) => !dismissed.contains(r.id))
+            .toList();
+      }
+    });
+  }
+
+  final Set<String> _dismissedRedemptionIds = <String>{};
+
+  List<BusinessStat> get _stats => _live?.stats ?? kBusinessStats;
+  List<BusinessOffer> get _offers => _live?.offers ?? kBusinessOffers;
+  List<BusinessCreator> get _creators => _live?.creators ?? kBusinessCreators;
+  List<BusinessPost> get _posts => _live?.posts ?? kBusinessPosts;
 
   void _setTab(BusinessTab tab) => setState(() => _tab = tab);
 
   void _approve(String id) {
-    setState(() => _redemptions.removeWhere((r) => r.id == id));
+    setState(() {
+      _dismissedRedemptionIds.add(id);
+      _redemptions.removeWhere((r) => r.id == id);
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -49,7 +84,10 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
   }
 
   void _decline(String id) {
-    setState(() => _redemptions.removeWhere((r) => r.id == id));
+    setState(() {
+      _dismissedRedemptionIds.add(id);
+      _redemptions.removeWhere((r) => r.id == id);
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -84,21 +122,24 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
           children: [
             _BusinessHeader(
               onProfileTap: () => context.go(AppRoutes.role),
+              onRefresh: _loading ? null : _refresh,
+              loading: _loading,
+              live: _live != null,
             ),
             _BusinessTabs(selected: _tab, onSelect: _setTab),
             const Divider(height: 1, thickness: 1, color: Color(0x1A000000)),
-            const BusinessStatsGrid(stats: kBusinessStats),
+            BusinessStatsGrid(stats: _stats),
             Expanded(
               child: switch (_tab) {
                 BusinessTab.offers => BusinessOffersPanel(
-                    offers: kBusinessOffers,
+                    offers: _offers,
                     onAddOffer: _onAddOffer,
                   ),
-                BusinessTab.creators => const BusinessCreatorsPanel(
-                    creators: kBusinessCreators,
+                BusinessTab.creators => BusinessCreatorsPanel(
+                    creators: _creators,
                   ),
-                BusinessTab.posts => const BusinessPostsPanel(
-                    posts: kBusinessPosts,
+                BusinessTab.posts => BusinessPostsPanel(
+                    posts: _posts,
                   ),
                 BusinessTab.redeem => BusinessRedeemPanel(
                     redemptions: _redemptions,
@@ -115,9 +156,19 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
 }
 
 class _BusinessHeader extends StatelessWidget {
-  const _BusinessHeader({required this.onProfileTap});
+  const _BusinessHeader({
+    required this.onProfileTap,
+    this.onRefresh,
+    this.loading = false,
+    this.live = false,
+  });
 
   final VoidCallback onProfileTap;
+  final VoidCallback? onRefresh;
+  final bool loading;
+
+  /// True when the panels show server data rather than the sample dashboard.
+  final bool live;
 
   @override
   Widget build(BuildContext context) {
@@ -140,18 +191,66 @@ class _BusinessHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  kBusinessName,
-                  style: GoogleFonts.fraunces(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: StrollingColors.nearBlack,
-                    height: 1.4,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      kBusinessName,
+                      style: GoogleFonts.fraunces(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: StrollingColors.nearBlack,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Honest badge: is the panel data live or the sample set?
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: live
+                            ? const Color(0x1A00BC7D)
+                            : const Color(0x14000000),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        live ? 'LIVE' : 'SAMPLE',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                          color: live
+                              ? const Color(0xFF00875A)
+                              : const Color(0xFF8D8798),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
+          GestureDetector(
+            onTap: onRefresh,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                color: StrollingColors.surfaceMuted,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: loading
+                  ? const SizedBox(
+                      width: 15,
+                      height: 15,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh_rounded,
+                      size: 19, color: StrollingColors.nearBlack),
+            ),
+          ),
+          const SizedBox(width: 8),
           Container(
             width: 36,
             height: 36,

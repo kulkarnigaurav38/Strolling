@@ -3,10 +3,51 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/theme.dart';
+import '../data/live_perks.dart';
 import '../data/sample_perks.dart';
 
-class MyPerksScreen extends StatelessWidget {
-  const MyPerksScreen({super.key, this.perks = kSamplePerks});
+/// Loads the wallet from GET /api/me/perks once, then renders it. Pass [perks]
+/// explicitly to bypass the network (tests / previews). If the API is
+/// unreachable we fall back to the sample wallet so the screen is never blank.
+class MyPerksScreen extends StatefulWidget {
+  const MyPerksScreen({super.key, this.perks});
+
+  final List<CreatorPerk>? perks;
+
+  @override
+  State<MyPerksScreen> createState() => _MyPerksScreenState();
+}
+
+class _MyPerksScreenState extends State<MyPerksScreen> {
+  late Future<List<CreatorPerk>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.perks != null
+        ? Future.value(widget.perks!)
+        : LivePerks.fetch().then((live) => live ?? kSamplePerks);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<CreatorPerk>>(
+      future: _future,
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const ColoredBox(
+            color: StrollingColors.background,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        return _PerksView(perks: snap.data!);
+      },
+    );
+  }
+}
+
+class _PerksView extends StatelessWidget {
+  const _PerksView({required this.perks});
 
   final List<CreatorPerk> perks;
 

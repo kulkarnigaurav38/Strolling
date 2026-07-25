@@ -46,3 +46,4 @@ app.*.map.json
 
 # Google Maps API key (local only)
 ios/Flutter/Secrets.xcconfig
+web/maps-key.js

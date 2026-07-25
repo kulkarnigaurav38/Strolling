@@ -30,8 +30,27 @@
   <title>strolling</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- Google Maps for Flutter web. Replace YOUR_KEY_HERE, enable Maps JavaScript API. -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_KEY_HERE"></script>
+  <!--
+    Google Maps for Flutter web. The key is NOT committed: put it in
+    web/maps-key.js (gitignored) as
+        window.GOOGLE_MAPS_KEY = 'your-key';
+    See web/maps-key.example.js. Without it the map area shows a hint instead
+    of Google's error overlay.
+  -->
+  <script src="maps-key.js" onerror="window.__mapsKeyMissing=true"></script>
+  <script>
+    (function () {
+      var key = window.GOOGLE_MAPS_KEY;
+      if (!key) {
+        console.warn('[strolling] no Google Maps key — create web/maps-key.js (see maps-key.example.js)');
+        return;
+      }
+      var s = document.createElement('script');
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key);
+      s.async = false;
+      document.head.appendChild(s);
+    })();
+  </script>
   
   
   <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
