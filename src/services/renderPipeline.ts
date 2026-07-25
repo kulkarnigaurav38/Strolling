@@ -133,7 +133,8 @@ export async function renderVideo(
     }
 
     const video = path.join(work, "video.mp4");
-    await ff.concat(clips, video, work);
+    // Crossfade transitions between shots (not hard cuts).
+    await ff.xfadeCompose(clips, video, 0.4);
     const finalPath = path.join(work, "final.mp4");
     await ff.mux(video, narration, finalPath);
 
@@ -168,10 +169,12 @@ async function processShot(
     generateRawClip(shot.media, work, input),
     buildShotAudio(shot.script, i, work),
   ]);
-  const clip = await ff.renderClipToDuration(
+  // Fit to the narration length AND burn the shot's caption (TikTok-style).
+  const clip = await ff.styleClip(
     rawClip,
     path.join(work, `clip_${i}.mp4`),
     audio.dur,
+    audio.text,
   );
   console.log(
     `[strolling] shot ${i + 1}: ${audio.dur.toFixed(2)}s | ${audio.engine} | "${audio.text}"`,
@@ -187,7 +190,7 @@ async function buildClip(
   input: RenderInput,
 ): Promise<string> {
   const raw = await generateRawClip(media, work, input);
-  return ff.renderClipToDuration(raw, out, seconds);
+  return ff.styleClip(raw, out, seconds);
 }
 
 /** Produce a raw (un-timed) clip for a shot's media. */

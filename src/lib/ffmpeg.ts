@@ -252,3 +252,101 @@ export async function renderClipToDuration(
   }
   return out;
 }
+
+// --- creative editing: TikTok-style captions + varied transitions ----------
+
+const CAPTION_FONT = "/System/Library/Fonts/Supplemental/Arial.ttf";
+
+/** Greedy word-wrap into short, punchy caption lines. */
+export function wrapCaption(text: string, maxLen = 18): string {
+  const words = text.replace(/\s+/g, " ").trim().split(" ");
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    if (cur && (cur + " " + w).length > maxLen) {
+      lines.push(cur);
+      cur = w;
+    } else {
+      cur = cur ? `${cur} ${w}` : w;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.slice(0, 4).join("\n");
+}
+
+/**
+ * Portrait clip fit to `target` seconds, with an optional burned-in caption
+ * (big, centered lower-third, white with a black outline — the TikTok look).
+ */
+export async function styleClip(
+  input: string,
+  out: string,
+  target: number,
+  caption?: string,
+): Promise<string> {
+  const raw = await probeDuration(input);
+  const base = [COVER(WIDTH, HEIGHT)];
+  if (target > raw + 0.06) {
+    base.push(`tpad=stop_mode=clone:stop_duration=${(target - raw).toFixed(3)}`);
+  }
+  const render = (extra: string[]) =>
+    run(FFMPEG, [
+      "-y", "-i", input, "-r", String(FPS),
+      "-vf", [...base, ...extra, "format=yuv420p"].join(","),
+      "-t", target.toFixed(3),
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", out,
+    ]);
+
+  const cap = (caption ?? "").trim();
+  if (cap) {
+    try {
+      const capFile = path.join(path.dirname(out), `cap-${randomUUID()}.txt`);
+      await writeFile(capFile, wrapCaption(cap));
+      const escFile = capFile.replace(/'/g, "\\'");
+      await render([
+        `drawtext=fontfile=${CAPTION_FONT}:textfile='${escFile}':` +
+          `fontcolor=white:fontsize=58:borderw=7:bordercolor=black:` +
+          `x=(w-text_w)/2:y=h*0.64:line_spacing=14`,
+      ]);
+      return out;
+    } catch {
+      // font missing / drawtext unavailable → render without the caption
+    }
+  }
+  await render([]);
+  return out;
+}
+
+/** Crossfade clips together with a rotating set of transitions (not hard cuts). */
+export async function xfadeCompose(
+  clips: string[],
+  out: string,
+  trans = 0.4,
+): Promise<string> {
+  if (clips.length === 1) {
+    await run(FFMPEG, ["-y", "-i", clips[0], "-c", "copy", out]);
+    return out;
+  }
+  const durs: number[] = [];
+  for (const c of clips) durs.push(await probeDuration(c));
+  const inputs = clips.flatMap((c) => ["-i", c]);
+  const kinds = ["fade", "wipeleft", "slideup", "circleopen", "smoothright"];
+  let filter = "";
+  let prev = "0:v";
+  let offset = Math.max(0, durs[0] - trans);
+  for (let i = 1; i < clips.length; i++) {
+    const label = i === clips.length - 1 ? "vout" : `x${i}`;
+    const kind = kinds[(i - 1) % kinds.length];
+    filter += `[${prev}][${i}:v]xfade=transition=${kind}:duration=${trans}:offset=${offset.toFixed(3)}[${label}];`;
+    prev = label;
+    offset += Math.max(0, durs[i] - trans);
+  }
+  filter = filter.replace(/;$/, "");
+  await run(FFMPEG, [
+    "-y", ...inputs,
+    "-filter_complex", filter,
+    "-map", "[vout]", "-r", String(FPS),
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", out,
+  ]);
+  return out;
+}
