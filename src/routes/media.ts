@@ -21,7 +21,11 @@ mediaRouter.post("/upload", upload.single("file"), async (req, res) => {
   }
 
   if (config.mock) {
-    // TODO(COMMIT-3): fal.storage.upload(req.file.buffer) → durable URL
+    // ⚠️ MOCK: fabricated storage URL — the bytes are NOT persisted anywhere.
+    // TODO(COMMIT-3) REPLACE WITH the real fal upload. lib/fal.ts already has it, so
+    // this is a two-line swap:
+    //   import { uploadToStorage } from "../lib/fal";
+    //   const mediaUrl = await uploadToStorage(req.file.buffer, req.file.originalname);
     const id = randomUUID();
     const safeName = req.file.originalname.replace(/[^\w.\-]/g, "_");
     const result: UploadResult = {

@@ -85,8 +85,8 @@ class _TemplatePickerScreenState extends ConsumerState<TemplatePickerScreen> {
           ],
           if (preview.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('First scene preview',
-                style: const TextStyle(
+            const Text('First scene preview',
+                style: TextStyle(
                     color: AppColors.muted,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,

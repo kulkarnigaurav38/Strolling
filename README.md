@@ -33,10 +33,34 @@ npm run build && npm start
 | `GET  /health`           | —                                 | `{ ok, mock }`                       | —       |
 | `POST /api/tasks`        | `{ business }`                    | `Task[]` (the 5 shots)               | COMMIT-3 |
 | `POST /api/media/upload` | multipart `file`                  | `{ mediaUrl }`                       | COMMIT-3 |
-| `POST /api/render`       | `{ captures, reviews, business }` | `{ videoUrl }`                       | COMMIT-4 |
+| `POST /api/render`       | `{ captures, reviews, business }` | `{ videoUrl }`                       | COMMIT-4 ✅ |
 | `POST /api/publish`      | `{ videoUrl, transcript }`        | `{ postUrl, caption, hashtags }`     | COMMIT-5 |
 
 `/mock/sample.mp4` is served statically so a mocked `videoUrl` actually resolves.
+
+### Render pipeline (`POST /api/render`)
+
+Turns the creator's **shots** — each a photo/clip plus its own **script part** — into a
+vertical video where each part's voiceover plays over its own shot. Parts are paired to
+photos by `taskId`; each part is cleaned by a fal LLM, voiced by ElevenLabs, and its shot
+is rendered to exactly that narration's length (trim / freeze-frame) so audio and visuals
+stay locked in sync. Real `captures`/`reviews` are used when present; otherwise the mock
+shots stand in (`src/lib/mockAssets.ts`) — **real data always wins**.
+
+- `MOCK=1` (default) → instant `/mock/sample.mp4`. Add `?force=1` to run the pipeline once.
+- `MOCK=0` → always runs. With `FAL_KEY` it uses **fal** (image-to-video + storage);
+  without a key it falls back to a **local ffmpeg** render (Ken Burns + macOS `say`
+  narration), served from `/renders/*`. Requires `ffmpeg`/`ffprobe` on `PATH`.
+
+```bash
+# real pipeline, no keys needed (local ffmpeg + say):
+MOCK=0 npm run dev
+curl -s -X POST localhost:3000/api/render -d '{}' -H 'content-type: application/json'
+# → { "videoUrl": "/renders/render-<uuid>.mp4" }  (GET it to watch)
+```
+
+See [CLAUDE.md](./CLAUDE.md#render-pipeline-the-post-creation-workflow--srcservicesrenderpipelinets)
+for the full design.
 
 ### Try it
 
@@ -60,8 +84,17 @@ src/
     director.ts         DIRECTOR_SYSTEM_PROMPT
     mock.ts             latency helper
   routes/               tasks · render · publish · media
+  services/
+    renderPipeline.ts   the post-creation workflow (fal i2v + ffmpeg compose)
+  lib/
+    fal.ts              fal client wrapper (image-to-video, storage, LLM, TTS)
+    elevenlabs.ts       ElevenLabs text-to-speech (the narration voice)
+    scriptCleaner.ts    raw script part → polished voiceover text (fal LLM / heuristic)
+    ffmpeg.ts           media plumbing (fit-to-duration, concat, mux, narration)
+    mockAssets.ts       MOCK_SHOTS — mock pictures paired with raw script parts
   middleware/           errorHandler
 public/mock/sample.mp4  stand-in rendered film
+public/mock/pictures/   mock stills for the render pipeline
 frontend/               Flutter client (see frontend/README.md)
 ```
 

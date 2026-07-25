@@ -58,10 +58,10 @@ class OnboardingScreen extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          Text(
+                          const Text(
                             Copy.tagline,
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.white,
                               fontSize: 18,
                               height: 1.4,

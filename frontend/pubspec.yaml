@@ -1,9 +1,7 @@
-# NOTE: package name stays `fernweh` — the generated platform folders reference
-# it and renaming buys nothing at this stage. The app itself is Strolling.
-name: fernweh
+name: strolling
 description: "Strolling — walk the city, get rewarded."
 publish_to: "none"
-version: 0.2.0+1
+version: 0.3.0+1
 
 environment:
   sdk: ">=3.6.0 <4.0.0"
@@ -16,7 +14,7 @@ dependencies:
   # routing — bottom-nav shell + pushed step/post flows (lib/core/router.dart)
   go_router: ^14.6.2
 
-  # state + persistence (stroll drafts survive restarts — v5 "save & resume")
+  # state + persistence (stroll drafts survive restarts — "save & resume")
   flutter_riverpod: ^2.6.1
   shared_preferences: ^2.3.3
 
@@ -39,9 +37,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/mock/sample.mp4
-  # SF Pro Text, bundled from this Mac's installed Apple fonts (demo use).
+  # SF Pro Text, bundled from a Mac's installed Apple fonts (demo use).
   fonts:
     - family: SF Pro
       fonts:

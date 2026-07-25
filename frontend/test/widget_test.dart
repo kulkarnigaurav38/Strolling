@@ -3,9 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:fernweh/main.dart';
-import 'package:fernweh/core/script_templates.dart';
-import 'package:fernweh/core/seed.dart';
+import 'package:strolling/main.dart';
+import 'package:strolling/core/script_templates.dart';
+import 'package:strolling/core/seed.dart';
 
 void main() {
   testWidgets('app boots to onboarding', (tester) async {

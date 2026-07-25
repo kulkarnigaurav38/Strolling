@@ -122,20 +122,20 @@ List<ScriptAction> _requiredFromDeliverable(ScriptTemplate t, Business b) {
 List<ScriptAction> _flavor(ScriptTemplate t) => switch (t.id) {
       'wes' => [
           ScriptAction(CaptureAction.photo, _photoPrompt(t)),
-          ScriptAction(CaptureAction.text, 'One deadpan sentence, no filler.'),
+          const ScriptAction(CaptureAction.text, 'One deadpan sentence, no filler.'),
         ],
       'kubrick' => [
           ScriptAction(CaptureAction.video, _videoPrompt(t)),
           ScriptAction(CaptureAction.photo, _photoPrompt(t)),
         ],
       'doku' => [
-          ScriptAction(CaptureAction.voice,
+          const ScriptAction(CaptureAction.voice,
               '30 seconds, first take: what is this place actually like?'),
           ScriptAction(CaptureAction.photo, _photoPrompt(t)),
         ],
       _ => [
           ScriptAction(CaptureAction.video, _videoPrompt(t)),
-          ScriptAction(CaptureAction.text,
+          const ScriptAction(CaptureAction.text,
               'POV caption, present tense, one line.'),
         ],
     };

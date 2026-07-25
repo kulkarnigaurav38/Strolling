@@ -1,4 +1,4 @@
-# Strolling 🚶
+# Strolling
 
 **Walk the city. Get rewarded.**
 
@@ -22,15 +22,16 @@ capture cards) → **Post builder** (AI caption, platform selector) → **Perks 
 
 `lib/core/script_templates.dart` turns the user's picks into a per-stop shooting
 script. Each scene has a themed title, staging direction, a line to deliver, the perk
-deliverable woven in, and **the capture actions to open** (📸 🎬 🎙️ ✍️). Actions
-required by a perk deliverable ("1 photo + 1 story post") gate the Post button.
+deliverable woven in, and **the capture actions to open** (photo / video / voice /
+text). Actions required by a perk deliverable ("1 photo + 1 story post") gate the
+Post button.
 
 | Template | Vibe |
 | --- | --- |
-| 🎀 The Symmetrist (à la Wes Anderson) | pastel, dead-center framing, deadpan captions |
-| 🔴 One-Point Stare (à la Kubrick) | one-point perspective, slow push-ins |
-| 🎙️ Der Doku | honest handheld documentary, interview yourself |
-| ⚡ Whatever's Viral | hook in 0.5s, whip-pans, POV captions |
+| The Symmetrist (à la Wes Anderson) | centered frames, level horizons, deadpan captions |
+| One-Point Stare (à la Kubrick) | one-point perspective, slow push-ins |
+| Der Doku | handheld documentary, real sound, first takes |
+| Whatever's Viral | hook first, fast cuts, POV captions |
 
 The generator is pure Dart — a later commit swaps it for Claude without touching
 any screen.
@@ -40,7 +41,7 @@ any screen.
 - **Map**: `flutter_map` + OpenStreetMap tiles (no API key), businesses at real
   Stuttgart coordinates; journey header is a non-interactive mini-map with the
   route polyline.
-- **Type**: SF Pro Text (bundled from this Mac's installed Apple fonts —
+- **Type**: SF Pro Text (bundled from a Mac's installed Apple fonts —
   fine for the demo; check licensing before shipping). No emoji in UI chrome —
   CupertinoIcons (SF-symbol style) + Material rounded icons.
 - **Backend wire**: run with `--dart-define=STROLLING_MOCK=false
@@ -49,37 +50,14 @@ any screen.
 
 ## Run
 
-Prereqs: Flutter 3.27+ and a device/emulator (or Chrome for web).
+Prereqs: Flutter 3.27+ and a device/emulator (or Chrome for web). Platform folders
+(`android/`, `ios/`, `web/`) are committed; camera/mic permissions are already in the
+Android manifest and iOS Info.plist.
 
 ```bash
-# 1. Generate the platform folders (kept out of git — see .gitignore).
-flutter create --platforms=android,ios,web .
-
-# 2. Add platform permissions below (camera), then:
 flutter pub get
-
-# 3. Run — no keys needed, everything is mocked.
-flutter run                      # device / Chrome
-flutter run -d web-server --web-port 8080   # any browser
-```
-
-### Platform permissions (add after `flutter create .`)
-
-**android/app/src/main/AndroidManifest.xml** — inside `<manifest>`:
-
-```xml
-<uses-permission android:name="android.permission.CAMERA" />
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.INTERNET" />
-```
-
-**ios/Runner/Info.plist**:
-
-```xml
-<key>NSCameraUsageDescription</key>
-<string>Strolling uses the camera to shoot your stops.</string>
-<key>NSMicrophoneUsageDescription</key>
-<string>Strolling records voice notes at your stops.</string>
+flutter run                                  # device / Chrome
+flutter run -d web-server --web-port 8080    # any browser
 ```
 
 ## Structure
@@ -88,16 +66,17 @@ flutter run -d web-server --web-port 8080   # any browser
 lib/
   main.dart                     entry, portrait lock
   core/
-    models.dart                 Business, StopDraft, Perk, CaptureAction
+    models.dart                 Business, StopDraft, Perk, CaptureAction, ScriptStep
     seed.dart                   Stuttgart businesses + mock AI captions
     script_templates.dart       the template engine (4 themed templates)
     state.dart                  Riverpod: auth, mode, cart, stroll, perks (persisted)
-    theme.dart  copy.dart  router.dart
+    api/api_client.dart         dio client for POST /api/scripts
+    theme.dart  copy.dart  router.dart  config.dart
   features/
     onboarding/                 sunset hero + social logins
-    map/                        painter, pins, mode switch, business sheet
+    map/                        flutter_map, pins, mode switch, business sheet
     template/                   script style picker
-    journey/                    stroll timeline + totals
+    journey/                    stroll timeline + mini-map + totals
     step/                       script card + photo/video + voice + note cards
     post/                       per-stop post builder
     perks/  profile/  shell/    wallet, stats, bottom nav
@@ -106,7 +85,7 @@ lib/
 ## Mocks → real (future commits)
 
 - Social login → real OAuth
-- `draftCaption()` + `script_templates.dart` → Claude generation via the backend
+- `draftCaption()` + script generator → Claude via the backend (`POST /api/scripts`)
 - Voice recorder → real recording
 - Publish → backend `/api/publish` → n8n → socials
-- Map → real map tiles + GPS
+- User location → real GPS
