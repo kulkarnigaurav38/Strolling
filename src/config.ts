@@ -35,6 +35,8 @@ export const config = {
   /** ElevenLabs voice + model for the narration audio. */
   elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID ?? "21m00Tcm4TlvDq8ikWAM", // Rachel
   elevenLabsModel: process.env.ELEVENLABS_MODEL ?? "eleven_multilingual_v2",
+  /** ElevenLabs Scribe model for transcribing the creator's raw voice note. */
+  elevenLabsSttModel: process.env.ELEVENLABS_STT_MODEL ?? "scribe_v1",
   /** Where composed videos are written and served from (local fallback). */
   rendersDir: path.join(process.cwd(), "public", "renders"),
   /** Where uploaded captures land when fal isn't used. Served at /uploads. */

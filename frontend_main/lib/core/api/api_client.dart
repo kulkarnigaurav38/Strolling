@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -8,6 +9,9 @@ import '../config.dart';
 import '../models/map_business.dart';
 import '../stroll/script_templates.dart';
 import '../stroll/stroll_models.dart';
+
+/// Reports render progress to the UI. [pct] is 0..1; [stage] is a short label.
+typedef ProgressCallback = void Function(double pct, String stage);
 
 /// Contract shapes mirrored from `src/lib/types.ts` (RenderResult post package).
 class PostPackage {
@@ -113,7 +117,9 @@ class ApiClient {
         contentType: MediaType.parse(contentType),
       ),
     );
-    final streamed = await _http.send(req).timeout(const Duration(minutes: 2));
+    // Generous: a large clip over slow Wi-Fi can take a while. Videos are stored
+    // locally on the server now (no slow fal hop), so this is just a safety net.
+    final streamed = await _http.send(req).timeout(const Duration(minutes: 5));
     final res = await http.Response.fromStream(streamed);
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception('upload failed: ${res.statusCode} ${res.body}');
@@ -162,11 +168,15 @@ class ApiClient {
   }
 
   /// Ensure draft captures have durable mediaUrls (upload if needed).
-  Future<StopDraft> ensureUploaded(StopDraft draft) async {
+  Future<StopDraft> ensureUploaded(
+    StopDraft draft, {
+    ProgressCallback? onProgress,
+  }) async {
     var next = draft;
 
     if (draft.hasPhoto &&
         (draft.photoUrl == null || draft.photoUrl!.startsWith('mock://'))) {
+      onProgress?.call(0.08, 'Uploading photo…');
       final bytes = base64Decode(draft.photoBase64!);
       final url = await uploadBytes(
         bytes: bytes,
@@ -174,11 +184,13 @@ class ApiClient {
         contentType: 'image/jpeg',
       );
       next = next.copyWith(photoUrl: url);
+      onProgress?.call(0.20, 'Photo uploaded');
     }
 
     if (draft.videoBytes != null &&
         draft.videoBytes!.isNotEmpty &&
         (draft.videoUrl == null || draft.videoUrl!.startsWith('mock://'))) {
+      onProgress?.call(0.18, 'Uploading video…');
       final name = draft.videoName ?? 'clip-${draft.businessId}.mp4';
       final url = await uploadBytes(
         bytes: draft.videoBytes!,
@@ -186,25 +198,48 @@ class ApiClient {
         contentType: 'video/mp4',
       );
       next = next.copyWith(videoUrl: url, clearVideoBytes: true);
+      onProgress?.call(0.24, 'Video uploaded');
+    }
+
+    if (draft.voiceBytes != null &&
+        draft.voiceBytes!.isNotEmpty &&
+        (draft.voiceUrl == null || draft.voiceUrl!.startsWith('mock://'))) {
+      onProgress?.call(0.26, 'Uploading voice note…');
+      final name = draft.voiceName ?? 'voice-${draft.businessId}.m4a';
+      final url = await uploadBytes(
+        bytes: draft.voiceBytes!,
+        filename: name,
+        contentType: 'audio/mp4',
+      );
+      next = next.copyWith(voiceUrl: url, clearVoiceBytes: true);
+      onProgress?.call(0.31, 'Voice note uploaded');
     }
 
     return next;
   }
 
   /// POST /api/render — stroll flat shape → post package.
+  ///
+  /// [onProgress] is called with (0..1, label) as the render advances: real
+  /// upload progress, then live backend stages polled from
+  /// GET /api/render/progress/:renderId while the (minutes-long) POST is in flight.
   Future<RenderOutcome> render({
     required MapBusiness business,
     required StopDraft draft,
     required ScriptStep step,
+    ProgressCallback? onProgress,
   }) async {
     final script = [
       step.line,
       if (draft.hasNote) draft.note!.trim(),
     ].where((s) => s.isNotEmpty).join(' ');
 
-    final ready = Config.mock ? draft : await ensureUploaded(draft);
+    onProgress?.call(0.02, 'Preparing…');
+    final ready = Config.mock ? draft : await ensureUploaded(draft, onProgress: onProgress);
+    final renderId = _newRenderId();
 
     final body = <String, dynamic>{
+      'renderId': renderId,
       'script': script,
       'text': draft.note ?? step.line,
       'business': {
@@ -219,11 +254,17 @@ class ApiClient {
         'videoUrl': ready.videoUrl,
       if (ready.photoUrl != null && !ready.photoUrl!.startsWith('mock://'))
         'images': [ready.photoUrl],
-      // Voice notes aren't recorded as files yet — narration comes from script TTS.
+      // The creator's raw voice note. The backend transcribes it, polishes it
+      // into a narration script, and re-voices it — so the narration carries
+      // their own opinions. If absent, narration falls back to the script/TTS.
+      if (ready.voiceUrl != null && !ready.voiceUrl!.startsWith('mock://'))
+        'voiceNoteUrl': ready.voiceUrl,
     };
 
     if (Config.mock) {
+      onProgress?.call(0.5, 'Cutting it together…');
       await Future<void>.delayed(const Duration(milliseconds: 900));
+      onProgress?.call(1.0, 'Ready');
       return RenderOutcome(
         draft: ready,
         package: PostPackage(
@@ -243,22 +284,66 @@ class ApiClient {
       );
     }
 
-    final res = await _http
+    onProgress?.call(0.32, 'Sending to the studio…');
+    final postFuture = _http
         .post(
           _uri('/api/render'),
           headers: {'content-type': 'application/json'},
           body: jsonEncode(body),
         )
         .timeout(renderTimeout);
+
+    // Poll live backend progress in parallel until the POST resolves. Backend
+    // 0..100 is mapped into the 0.32..0.98 slice we reserve for rendering.
+    await _pollUntilDone(renderId, postFuture, onProgress);
+
+    final res = await postFuture;
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception('render failed: ${res.statusCode} ${res.body}');
     }
+    onProgress?.call(1.0, 'Ready');
     return RenderOutcome(
       draft: ready,
       package: PostPackage.fromJson(
         jsonDecode(res.body) as Map<String, dynamic>,
       ),
     );
+  }
+
+  /// A short, unique id to correlate a render with its progress endpoint.
+  String _newRenderId() =>
+      'r${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}';
+
+  /// Poll GET /api/render/progress/:id every ~1.2s, forwarding real stages to
+  /// [onProgress], until [postFuture] completes. Poll failures are ignored — a
+  /// missing/late progress row must never break the render itself.
+  Future<void> _pollUntilDone(
+    String renderId,
+    Future<http.Response> postFuture,
+    ProgressCallback? onProgress,
+  ) async {
+    if (onProgress == null) return;
+    var done = false;
+    unawaited(postFuture.whenComplete(() => done = true).catchError(
+          (_) => http.Response('', 599), // swallow here; real await handles it
+        ));
+    while (!done) {
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      if (done) break;
+      try {
+        final pr = await _http
+            .get(_uri('/api/render/progress/$renderId'))
+            .timeout(const Duration(seconds: 4));
+        if (pr.statusCode == 200) {
+          final j = jsonDecode(pr.body) as Map<String, dynamic>;
+          final pct = (j['pct'] as num?)?.toDouble() ?? 0;
+          final stage = (j['stage'] as String?) ?? 'Rendering…';
+          if (!done) onProgress(0.32 + 0.66 * (pct / 100.0), stage);
+        }
+      } catch (_) {
+        // ignore poll errors (row not ready yet, transient network)
+      }
+    }
   }
 
   /// POST /api/publish { videoUrl, transcript } → { postUrl, caption, hashtags }

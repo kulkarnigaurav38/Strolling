@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/logging.dart';
 import 'core/router.dart';
 import 'core/stroll/stroll_controller.dart';
 import 'core/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  installAppLogging(); // compact, filtered console output
   runApp(const StrollingApp());
 }
 

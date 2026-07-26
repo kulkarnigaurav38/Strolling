@@ -43,6 +43,12 @@ dependencies:
   image_picker: ^1.2.3
   http: ^1.6.0
   http_parser: ^4.1.2
+  # Real microphone recording for voice notes (platform channels — no NDK).
+  # 6.x pulls the consistent 2.x platform set (record_android/linux/…); the older
+  # 5.x line pins a record_linux that fails to compile against the new interface.
+  # path_provider gives a temp path to record into.
+  record: ^6.0.0
+  path_provider: ^2.1.4
 
 # Pin path_provider_android below 2.3.0 — 2.3.x pulls in `jni` (native code),
 # which forces a ~1GB Android NDK download. 2.2.x uses plain platform channels.

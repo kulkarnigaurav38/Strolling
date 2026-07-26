@@ -25,21 +25,13 @@ class GeneratingPostScreen extends StatefulWidget {
 
 class _GeneratingPostScreenState extends State<GeneratingPostScreen>
     with TickerProviderStateMixin {
-  static const _messages = [
-    'Framing your shots…',
-    'Writing a caption worth posting…',
-    'Animating stills…',
-    'Recording the voiceover…',
-    'Cutting it together…',
-    'Almost ready…',
-  ];
-
   late final AnimationController _spin;
   late final AnimationController _pulse;
-  late final AnimationController _progress;
-  late final AnimationController _message;
 
-  int _messageIndex = 0;
+  // Real progress, driven by ApiClient.render's onProgress (uploads + live
+  // backend stages) — not a timer. 0..1, with a human-readable stage label.
+  double _pct = 0;
+  String _stage = 'Framing your shots…';
   String? _error;
 
   @override
@@ -56,29 +48,7 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
       duration: const Duration(milliseconds: 1600),
     )..repeat(reverse: true);
 
-    _progress = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 90000),
-    )..forward();
-
-    _message = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    )..forward();
-
-    _cycleMessages();
     _renderAndFinish();
-  }
-
-  Future<void> _cycleMessages() async {
-    for (var i = 1; i < _messages.length; i++) {
-      await Future<void>.delayed(const Duration(seconds: 12));
-      if (!mounted || _error != null) return;
-      await _message.reverse();
-      if (!mounted) return;
-      setState(() => _messageIndex = i);
-      await _message.forward();
-    }
   }
 
   Future<void> _renderAndFinish() async {
@@ -105,6 +75,14 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
         business: b,
         draft: draft,
         step: step,
+        onProgress: (pct, stage) {
+          if (!mounted) return;
+          setState(() {
+            // Monotonic: never let a late poll pull the bar backwards.
+            _pct = pct.clamp(0.0, 1.0) > _pct ? pct.clamp(0.0, 1.0) : _pct;
+            _stage = stage;
+          });
+        },
       );
       if (!mounted) return;
       final pkg = outcome.package;
@@ -127,12 +105,19 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
     }
   }
 
+  void _retry() {
+    setState(() {
+      _error = null;
+      _pct = 0;
+      _stage = 'Framing your shots…';
+    });
+    _renderAndFinish();
+  }
+
   @override
   void dispose() {
     _spin.dispose();
     _pulse.dispose();
-    _progress.dispose();
-    _message.dispose();
     super.dispose();
   }
 
@@ -237,10 +222,7 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
                 const SizedBox(height: 14),
                 if (_error != null)
                   GestureDetector(
-                    onTap: () {
-                      setState(() => _error = null);
-                      _renderAndFinish();
-                    },
+                    onTap: _retry,
                     child: Text(
                       _error!,
                       textAlign: TextAlign.center,
@@ -253,36 +235,39 @@ class _GeneratingPostScreenState extends State<GeneratingPostScreen>
                     ),
                   )
                 else
-                  FadeTransition(
-                    opacity: _message,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.18),
-                        end: Offset.zero,
-                      ).animate(
-                        CurvedAnimation(
-                          parent: _message,
-                          curve: Curves.easeOutCubic,
-                        ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 350),
+                    transitionBuilder: (child, anim) => FadeTransition(
+                      opacity: anim,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.18),
+                          end: Offset.zero,
+                        ).animate(anim),
+                        child: child,
                       ),
-                      child: Text(
-                        _messages[_messageIndex],
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.nunito(
-                          fontSize: 16,
-                          height: 1.4,
-                          color: Colors.white.withValues(alpha: 0.88),
-                        ),
+                    ),
+                    child: Text(
+                      // The real backend/upload stage — keyed so each new stage
+                      // fades in as it arrives.
+                      _stage,
+                      key: ValueKey<String>(_stage),
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.nunito(
+                        fontSize: 16,
+                        height: 1.4,
+                        color: Colors.white.withValues(alpha: 0.88),
                       ),
                     ),
                   ),
                 const Spacer(flex: 2),
-                AnimatedBuilder(
-                  animation: _progress,
-                  builder: (context, _) {
-                    final value = Curves.easeInOutCubic.transform(
-                      _progress.value.clamp(0.0, 1.0),
-                    );
+                TweenAnimationBuilder<double>(
+                  // Smoothly eases the bar toward the real progress value so
+                  // discrete backend updates don't snap.
+                  tween: Tween<double>(begin: 0, end: _pct.clamp(0.0, 1.0)),
+                  duration: const Duration(milliseconds: 450),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, _) {
                     return Column(
                       children: [
                         ClipRRect(

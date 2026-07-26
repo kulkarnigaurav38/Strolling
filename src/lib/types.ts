@@ -57,6 +57,8 @@ export interface StrollRenderPart {
   audioUrl?: string;
   text?: string;
   script?: string;
+  /** Creator's RAW voice note — transcribed → cleaned → re-voiced (see below). */
+  voiceNoteUrl?: string;
 }
 
 /**
@@ -78,10 +80,19 @@ export interface RenderRequest {
   script?: string;
   /** Multi-stop stroll: one entry per scene/part. */
   parts?: StrollRenderPart[];
-  /** Whole-video narration track (bypasses per-shot TTS). */
+  /** Whole-video narration track, used AS-IS (bypasses per-shot TTS). */
   voiceoverUrl?: string;
+  /**
+   * Creator's RAW spoken voice note. Unlike `voiceoverUrl`, this is NOT used as
+   * the final audio — it is transcribed (ElevenLabs Scribe), polished into a
+   * narration script (LLM), and re-voiced by TTS. So the finished narration
+   * carries the creator's own opinions, in the AI voice.
+   */
+  voiceNoteUrl?: string;
   /** Async Supabase job id. */
   jobId?: string;
+  /** Client-supplied id to report/poll live render progress (see lib/progress). */
+  renderId?: string;
 }
 
 /** Post package returned by POST /api/render. */

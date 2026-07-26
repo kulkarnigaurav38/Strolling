@@ -18,6 +18,11 @@ class StopDraft {
   /// In-memory only — never written to SharedPreferences (clips are large).
   final Uint8List? videoBytes;
   final int? voiceSeconds;
+  final String? voiceName;
+  /// Durable URL from POST /api/media/upload (sent to render as the voice note).
+  final String? voiceUrl;
+  /// In-memory only — never persisted (raw recorded audio bytes).
+  final Uint8List? voiceBytes;
   final String? note;
   final DateTime? savedAt;
   final bool posted;
@@ -36,6 +41,9 @@ class StopDraft {
     this.videoUrl,
     this.videoBytes,
     this.voiceSeconds,
+    this.voiceName,
+    this.voiceUrl,
+    this.voiceBytes,
     this.note,
     this.savedAt,
     this.posted = false,
@@ -49,7 +57,8 @@ class StopDraft {
   bool get hasPhoto => photoBase64 != null || photoUrl != null;
   bool get hasVideo =>
       videoName != null || videoUrl != null || videoBytes != null;
-  bool get hasVoice => voiceSeconds != null;
+  bool get hasVoice =>
+      voiceSeconds != null || voiceBytes != null || voiceUrl != null;
   bool get hasNote => note != null && note!.trim().isNotEmpty;
   bool get hasAnyCapture => hasPhoto || hasVideo || hasVoice || hasNote;
 
@@ -67,6 +76,9 @@ class StopDraft {
     String? videoUrl,
     Uint8List? videoBytes,
     int? voiceSeconds,
+    String? voiceName,
+    String? voiceUrl,
+    Uint8List? voiceBytes,
     String? note,
     DateTime? savedAt,
     bool? posted,
@@ -80,6 +92,7 @@ class StopDraft {
     bool clearVoice = false,
     bool clearNote = false,
     bool clearVideoBytes = false,
+    bool clearVoiceBytes = false,
   }) {
     return StopDraft(
       businessId: businessId,
@@ -91,6 +104,11 @@ class StopDraft {
           ? null
           : (videoBytes ?? this.videoBytes),
       voiceSeconds: clearVoice ? null : (voiceSeconds ?? this.voiceSeconds),
+      voiceName: clearVoice ? null : (voiceName ?? this.voiceName),
+      voiceUrl: clearVoice ? null : (voiceUrl ?? this.voiceUrl),
+      voiceBytes: clearVoice || clearVoiceBytes
+          ? null
+          : (voiceBytes ?? this.voiceBytes),
       note: clearNote ? null : (note ?? this.note),
       savedAt: savedAt ?? this.savedAt,
       posted: posted ?? this.posted,
@@ -110,6 +128,9 @@ class StopDraft {
         videoUrl: j['videoUrl'] as String?,
         // videoBytes intentionally not persisted
         voiceSeconds: j['voiceSeconds'] as int?,
+        voiceName: j['voiceName'] as String?,
+        voiceUrl: j['voiceUrl'] as String?,
+        // voiceBytes intentionally not persisted
         note: j['note'] as String?,
         savedAt: j['savedAt'] != null
             ? DateTime.tryParse(j['savedAt'] as String)
@@ -131,6 +152,8 @@ class StopDraft {
         'videoName': videoName,
         'videoUrl': videoUrl,
         'voiceSeconds': voiceSeconds,
+        'voiceName': voiceName,
+        'voiceUrl': voiceUrl,
         'note': note,
         'savedAt': savedAt?.toIso8601String(),
         'posted': posted,

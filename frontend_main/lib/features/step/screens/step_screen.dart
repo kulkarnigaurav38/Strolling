@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../../../core/models/map_business.dart';
 import '../../../core/router.dart';
@@ -29,6 +32,7 @@ enum _ScriptMode { ai, writeOwn }
 
 class _StepScreenState extends State<StepScreen> {
   late final TextEditingController _noteController;
+  final AudioRecorder _recorder = AudioRecorder();
   Timer? _voiceTimer;
   int _recordingSeconds = 0;
   bool _recording = false;
@@ -45,6 +49,7 @@ class _StepScreenState extends State<StepScreen> {
   @override
   void dispose() {
     _voiceTimer?.cancel();
+    _recorder.dispose();
     _noteController.dispose();
     super.dispose();
   }
@@ -83,8 +88,12 @@ class _StepScreenState extends State<StepScreen> {
 
   Future<void> _pickVideo() async {
     final picker = ImagePicker();
-    final file = await picker.pickVideo(source: ImageSource.camera) ??
-        await picker.pickVideo(source: ImageSource.gallery);
+    // Cap clip length — a stop clip only needs a few seconds, and it keeps the
+    // upload small (a long raw clip is tens of MB).
+    const maxClip = Duration(seconds: 20);
+    final file =
+        await picker.pickVideo(source: ImageSource.camera, maxDuration: maxClip) ??
+            await picker.pickVideo(source: ImageSource.gallery, maxDuration: maxClip);
     if (file == null) return;
     final bytes = await file.readAsBytes();
     _update(
@@ -96,20 +105,54 @@ class _StepScreenState extends State<StepScreen> {
     );
   }
 
-  void _toggleRecording() {
+  /// Real microphone recording (was a fake stopwatch). The recorded audio is
+  /// stored on the draft and later transcribed server-side, so the creator's
+  /// own words drive the narration.
+  Future<void> _toggleRecording() async {
     if (_recording) {
       _voiceTimer?.cancel();
+      final seconds = _recordingSeconds;
+      final path = await _recorder.stop();
+      if (!mounted) return;
       setState(() => _recording = false);
-      _update(_draft.copyWith(voiceSeconds: _recordingSeconds));
-    } else {
-      setState(() {
-        _recording = true;
-        _recordingSeconds = 0;
-      });
-      _voiceTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        setState(() => _recordingSeconds++);
-      });
+      if (path == null) return;
+      final bytes = await File(path).readAsBytes();
+      _update(
+        _draft.copyWith(
+          voiceSeconds: seconds,
+          voiceName: 'voice-${widget.businessId}.m4a',
+          voiceBytes: bytes,
+          voiceUrl: null, // force a re-upload of the new recording
+        ),
+      );
+      return;
     }
+
+    if (!await _recorder.hasPermission()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Microphone permission is needed to record a voice note.'),
+        ),
+      );
+      return;
+    }
+
+    final dir = await getTemporaryDirectory();
+    final path =
+        '${dir.path}/voice-${widget.businessId}-${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _recorder.start(
+      const RecordConfig(encoder: AudioEncoder.aacLc),
+      path: path,
+    );
+    if (!mounted) return;
+    setState(() {
+      _recording = true;
+      _recordingSeconds = 0;
+    });
+    _voiceTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _recordingSeconds++);
+    });
   }
 
   Future<void> _runCapture(CaptureAction kind) async {
@@ -119,7 +162,7 @@ class _StepScreenState extends State<StepScreen> {
       case CaptureAction.video:
         await _pickVideo();
       case CaptureAction.voice:
-        _toggleRecording();
+        await _toggleRecording();
       case CaptureAction.text:
         // Focus handled by write-own field; no-op here.
         break;

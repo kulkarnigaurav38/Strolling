@@ -1,7 +1,14 @@
 import { Router } from "express";
 import { config } from "../config";
+import { fail, log } from "../lib/log";
 import { MOCK_SHOTS } from "../lib/mockAssets";
 import { buildPostPackage } from "../lib/postPackage";
+import {
+  failProgress,
+  finishProgress,
+  getProgress,
+  startProgress,
+} from "../lib/progress";
 import * as supabase from "../lib/supabase";
 import type {
   RenderRequest,
@@ -12,6 +19,25 @@ import { processJobById } from "../services/jobWorker";
 import { renderVideo, type RenderInput, type Shot } from "../services/renderPipeline";
 
 export const renderRouter = Router();
+
+// GET /api/render/progress/:id — live progress for a synchronous render.
+// The frontend polls this in parallel with its (long, blocking) POST /api/render
+// so it can show an honest progress bar. Returns 404 until the render starts.
+renderRouter.get("/progress/:id", (req, res) => {
+  const p = getProgress(req.params.id);
+  if (!p) {
+    res.status(404).json({ pct: 0, stage: "starting", done: false, error: null });
+    return;
+  }
+  res.json({
+    id: p.id,
+    pct: p.pct,
+    stage: p.stage,
+    done: p.done,
+    error: p.error,
+    elapsedMs: Date.now() - p.startedAt,
+  });
+});
 
 // POST /api/render
 //
@@ -28,9 +54,10 @@ export const renderRouter = Router();
 // Either way the script arrives in PARTS: each part is tied to its media.
 // Real creator data always wins; with none, ⚠️ MOCK_SHOTS stand in.
 renderRouter.post("/", async (req, res, next) => {
+  const body = (req.body ?? {}) as Partial<RenderRequest>;
+  const renderId =
+    typeof body.renderId === "string" && body.renderId ? body.renderId : undefined;
   try {
-    const body = (req.body ?? {}) as Partial<RenderRequest>;
-
     // --- Path A: async Supabase job (optional trigger) ---
     // Note: the background worker (services/jobWorker) already auto-renders any
     // queued row, so the frontend can just insert a row and skip this call. This
@@ -48,11 +75,23 @@ renderRouter.post("/", async (req, res, next) => {
     }
 
     // --- Path B: synchronous "media + words → post package" ---
-    const { shots, voiceoverUrl, scriptText } = shotsFromPayload(body);
+    const { shots, voiceoverUrl, voiceNoteUrl, scriptText } = shotsFromPayload(body);
+
+    log("render", "request received", {
+      renderId,
+      images: (body.images ?? []).length,
+      video: body.videoUrl ? 1 : 0,
+      voiceNote: voiceNoteUrl ? "yes (will transcribe)" : "no",
+      shots: shots.length || "mock",
+      business: body.business?.slug ?? body.business?.name,
+      scriptChars: scriptText.length,
+    });
 
     // ⚠️ MOCK fast-path (default MOCK=1): return a contract-shaped post package
     // instantly. Use ?force=1 or MOCK=0 to run the real pipeline.
     if (config.mock && req.query.force === undefined) {
+      log("render", "MOCK fast-path — returning sample.mp4 (set MOCK=0 for the real pipeline)");
+      finishProgress(renderId, "Ready (mock)");
       const result: RenderResult = buildPostPackage({
         videoUrl: "/mock/sample.mp4",
         script: scriptText,
@@ -63,13 +102,20 @@ renderRouter.post("/", async (req, res, next) => {
       return;
     }
 
+    startProgress(renderId, "Preparing render");
     const input: RenderInput = {
       shots: shots.length > 0 ? shots : MOCK_SHOTS,
       business: body.business,
       voiceoverUrl,
+      voiceNoteUrl,
+      renderId,
     };
+    if (shots.length === 0) {
+      log("render", "no creator media in request — falling back to MOCK_SHOTS");
+    }
     const { videoUrl, usedFal, voiceoverEngine, cleanedScript } =
       await renderVideo(input);
+    finishProgress(renderId);
     res.setHeader("x-render-engine", usedFal ? "fal" : "ffmpeg-local");
     res.setHeader("x-render-inputs", shots.length > 0 ? "creator" : "mock");
     res.setHeader("x-render-shots", String(input.shots.length));
@@ -82,6 +128,8 @@ renderRouter.post("/", async (req, res, next) => {
     });
     res.json(result);
   } catch (err) {
+    fail("render", "request failed", err);
+    failProgress(renderId, (err as Error).message);
     next(err);
   }
 });
@@ -96,6 +144,7 @@ renderRouter.post("/", async (req, res, next) => {
 function shotsFromPayload(body: Partial<RenderRequest>): {
   shots: Shot[];
   voiceoverUrl?: string;
+  voiceNoteUrl?: string;
   scriptText: string;
 } {
   // Preferred: pictures + their script parts, already paired.
@@ -112,6 +161,7 @@ function shotsFromPayload(body: Partial<RenderRequest>): {
     return {
       shots,
       voiceoverUrl: body.voiceoverUrl ?? body.audioUrl,
+      voiceNoteUrl: body.voiceNoteUrl,
       scriptText: shots.map((s) => s.script).filter(Boolean).join(" "),
     };
   }
@@ -121,15 +171,18 @@ function shotsFromPayload(body: Partial<RenderRequest>): {
     const shots: Shot[] = [];
     const scripts: string[] = [];
     let voiceoverUrl = body.voiceoverUrl;
+    let voiceNoteUrl = body.voiceNoteUrl;
     for (const part of body.parts) {
       const { partShots, partVoice, partScript } = shotsFromPart(part);
       shots.push(...partShots);
       if (partScript) scripts.push(partScript);
       if (!voiceoverUrl && partVoice) voiceoverUrl = partVoice;
+      if (!voiceNoteUrl && part.voiceNoteUrl) voiceNoteUrl = part.voiceNoteUrl;
     }
     return {
       shots,
       voiceoverUrl,
+      voiceNoteUrl,
       scriptText: scripts.join(" ") || (body.script ?? body.text ?? "").trim(),
     };
   }
@@ -146,6 +199,7 @@ function shotsFromPayload(body: Partial<RenderRequest>): {
     return {
       shots: partShots,
       voiceoverUrl: body.voiceoverUrl ?? partVoice,
+      voiceNoteUrl: body.voiceNoteUrl,
       scriptText: partScript || (body.script ?? body.text ?? "").trim(),
     };
   }
@@ -165,6 +219,7 @@ function shotsFromPayload(body: Partial<RenderRequest>): {
   return {
     shots,
     voiceoverUrl: body.voiceoverUrl ?? body.audioUrl,
+    voiceNoteUrl: body.voiceNoteUrl,
     scriptText: shots.map((s) => s.script).filter(Boolean).join(" "),
   };
 }
@@ -174,6 +229,7 @@ function hasStrollFields(body: Partial<RenderRequest>): boolean {
     (body.images && body.images.length > 0) ||
       body.videoUrl ||
       body.audioUrl ||
+      body.voiceNoteUrl ||
       body.text ||
       body.script,
   );
