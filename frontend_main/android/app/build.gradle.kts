@@ -25,6 +25,34 @@ android {
     // No native plugins remain (google_maps/jni removed) → no NDK needed.
     // ndkVersion = flutter.ndkVersion
 
+    // ── No-NDK workaround ─────────────────────────────────────────────────
+    // Modern Flutter's Gradle plugin calls `forceNdkDownload()` UNCONDITIONALLY
+    // (flutter_tools .../gradle/.../FlutterPluginUtils.kt, FlutterPlugin.kt:229).
+    // That function points this module at an empty CMakeLists.txt for the SOLE
+    // purpose of making AGP believe there is a C/C++ build and thus download the
+    // NDK (~1GB — AGP's default 27.0.12077973). This app has NO native code, so
+    // we undo it here: the Flutter plugin sets the CMake path at apply-time; this
+    // `android {}` block runs right after, before AGP creates its CXX tasks, so
+    // clearing the path removes the CXX build → the NDK is never required.
+    externalNativeBuild {
+        cmake {
+            path = null
+        }
+    }
+    // Belt-and-suspenders: also skip stripping the engine's own .so files, which
+    // would otherwise be a second (task-time) reason AGP reaches for the NDK.
+    // (Without the NDK these libraries ship unstripped, so the debug APK is large —
+    // that is the accepted trade for not downloading the ~1GB NDK.)
+    packaging {
+        jniLibs {
+            keepDebugSymbols.add("**/*.so")
+            // The Vulkan validation layer is a ~240MB debug-only diagnostic that the
+            // app never loads unless Vulkan validation is explicitly enabled. Dropping
+            // it roughly halves the (unstripped) debug APK with no effect on running.
+            excludes.add("**/libVkLayer_khronos_validation.so")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
