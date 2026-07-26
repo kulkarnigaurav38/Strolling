@@ -22,7 +22,8 @@ val mapsApiKey: String = localProperties.getProperty("GOOGLE_MAPS_API_KEY") ?: "
 android {
     namespace = "com.example.strolling"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // No native plugins remain (google_maps/jni removed) → no NDK needed.
+    // ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

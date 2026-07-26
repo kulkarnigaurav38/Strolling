@@ -1,8 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../core/router.dart';
 import '../../../core/stroll/script_templates.dart';
@@ -105,46 +105,67 @@ class JourneyScreen extends StatelessWidget {
                   width: double.infinity,
                   child: points.isEmpty
                       ? const ColoredBox(color: StrollingColors.surfaceMuted)
-                      : GoogleMap(
-                          initialCameraPosition: CameraPosition(
-                            target: points.first,
-                            zoom: 14.5,
+                      : FlutterMap(
+                          options: MapOptions(
+                            initialCenter: points.first,
+                            initialZoom: 14,
+                            initialCameraFit: points.length >= 2
+                                ? CameraFit.bounds(
+                                    bounds: LatLngBounds.fromPoints(points),
+                                    padding: const EdgeInsets.all(28),
+                                  )
+                                : null,
+                            interactionOptions: const InteractionOptions(
+                              flags: InteractiveFlag.none,
+                            ),
                           ),
-                          markers: {
-                            for (var i = 0; i < points.length; i++)
-                              Marker(
-                                markerId: MarkerId('stop-$i'),
-                                position: points[i],
-                                icon: BitmapDescriptor.defaultMarkerWithHue(
-                                  BitmapDescriptor.hueRose,
-                                ),
-                                infoWindow: InfoWindow(title: '${i + 1}'),
-                              ),
-                          },
-                          polylines: points.length >= 2
-                              ? {
+                          children: [
+                            TileLayer(
+                              urlTemplate:
+                                  'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+                              userAgentPackageName: 'dev.strolling.app',
+                            ),
+                            if (points.length >= 2)
+                              PolylineLayer(
+                                polylines: [
                                   Polyline(
-                                    polylineId: const PolylineId('route'),
                                     points: points,
+                                    strokeWidth: 4,
                                     color: StrollingColors.primary,
-                                    width: 4,
-                                    patterns: [PatternItem.dot, PatternItem.gap(8)],
+                                    pattern: const StrokePattern.dotted(),
                                   ),
-                                }
-                              : {},
-                          zoomControlsEnabled: false,
-                          myLocationButtonEnabled: false,
-                          mapToolbarEnabled: false,
-                          liteModeEnabled: true,
-                          onMapCreated: (controller) {
-                            if (points.length < 2) return;
-                            controller.animateCamera(
-                              CameraUpdate.newLatLngBounds(
-                                _boundsFor(points),
-                                48,
+                                ],
                               ),
-                            );
-                          },
+                            MarkerLayer(
+                              markers: [
+                                for (var i = 0; i < points.length; i++)
+                                  Marker(
+                                    point: points[i],
+                                    width: 24,
+                                    height: 24,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: StrollingColors.primary,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '${i + 1}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
                         ),
                 ),
                 Positioned(
@@ -236,23 +257,6 @@ class JourneyScreen extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  LatLngBounds _boundsFor(List<LatLng> points) {
-    var minLat = points.first.latitude;
-    var maxLat = points.first.latitude;
-    var minLng = points.first.longitude;
-    var maxLng = points.first.longitude;
-    for (final p in points.skip(1)) {
-      minLat = minLat < p.latitude ? minLat : p.latitude;
-      maxLat = maxLat > p.latitude ? maxLat : p.latitude;
-      minLng = minLng < p.longitude ? minLng : p.longitude;
-      maxLng = maxLng > p.longitude ? maxLng : p.longitude;
-    }
-    return LatLngBounds(
-      southwest: LatLng(minLat, minLng),
-      northeast: LatLng(maxLat, maxLng),
     );
   }
 

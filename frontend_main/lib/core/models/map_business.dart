@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 
 enum MapMode { explore, earn }
 
@@ -58,15 +58,6 @@ class MapBusiness {
     return first.length > 10 ? '${first.substring(0, 8)}…' : first;
   }
 
-  double get markerHue {
-    if (!hasPerk) return BitmapDescriptor.hueAzure;
-    final c = perkColor;
-    // Map perk colors to Google marker hues (approx).
-    if (c == const Color(0xFF2DCE89)) return BitmapDescriptor.hueGreen;
-    if (c == const Color(0xFF6C63FF)) return BitmapDescriptor.hueViolet;
-    if (c == const Color(0xFFF5A623)) return BitmapDescriptor.hueOrange;
-    return BitmapDescriptor.hueRose;
-  }
 }
 
 /// User "you are here" — Stuttgart Hauptbahnhof.

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart' as fm;
-import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 import 'package:latlong2/latlong.dart' as ll;
 
 import '../../../core/config.dart';
@@ -33,19 +32,13 @@ class CityMapView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Config.useGoogleMaps
-        ? _GoogleCityMap(
-            businesses: businesses,
-            cart: cart,
-            selectedId: selectedId,
-            onPinTap: onPinTap,
-          )
-        : _OsmCityMap(
-            businesses: businesses,
-            cart: cart,
-            selectedId: selectedId,
-            onPinTap: onPinTap,
-          );
+    // Pure-Dart raster tiles (OSM / CARTO / Mapbox) — no native code, no NDK.
+    return _OsmCityMap(
+      businesses: businesses,
+      cart: cart,
+      selectedId: selectedId,
+      onPinTap: onPinTap,
+    );
   }
 }
 
@@ -66,15 +59,13 @@ class _OsmCityMap extends StatelessWidget {
   final int? selectedId;
   final ValueChanged<int> onPinTap;
 
-  static ll.LatLng _ll(gmaps.LatLng p) => ll.LatLng(p.latitude, p.longitude);
-
   List<ll.LatLng> get _routePoints {
     if (cart.length < 2) return const [];
     final byId = {for (final b in businesses) b.id: b};
     return [
-      _ll(kUserLocation),
+      kUserLocation,
       for (final id in cart)
-        if (byId[id] != null) _ll(byId[id]!.latLng),
+        if (byId[id] != null) byId[id]!.latLng,
     ];
   }
 
@@ -134,7 +125,7 @@ class _OsmCityMap extends StatelessWidget {
     final route = _routePoints;
     return fm.FlutterMap(
       options: fm.MapOptions(
-        initialCenter: _ll(kStuttgartCenter),
+        initialCenter: kStuttgartCenter,
         initialZoom: 14.6,
         // Leave the top/bottom chrome tappable rather than eating gestures.
         interactionOptions: const fm.InteractionOptions(
@@ -160,14 +151,14 @@ class _OsmCityMap extends StatelessWidget {
         fm.MarkerLayer(
           markers: [
             fm.Marker(
-              point: _ll(kUserLocation),
+              point: kUserLocation,
               width: 30,
               height: 30,
               child: const _YouAreHereDot(),
             ),
             for (final b in businesses)
               fm.Marker(
-                point: _ll(b.latLng),
+                point: b.latLng,
                 width: 74,
                 height: 62,
                 alignment: Alignment.topCenter,
@@ -308,116 +299,6 @@ class _OsmPin extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Google Maps renderer (opt-in via USE_GOOGLE_MAPS)
-// ---------------------------------------------------------------------------
-
-class _GoogleCityMap extends StatefulWidget {
-  const _GoogleCityMap({
-    required this.businesses,
-    required this.cart,
-    required this.selectedId,
-    required this.onPinTap,
-  });
-
-  final List<MapBusiness> businesses;
-  final List<int> cart;
-  final int? selectedId;
-  final ValueChanged<int> onPinTap;
-
-  @override
-  State<_GoogleCityMap> createState() => _GoogleCityMapState();
-}
-
-class _GoogleCityMapState extends State<_GoogleCityMap> {
-  gmaps.GoogleMapController? _controller;
-
-  static const _initial = gmaps.CameraPosition(
-    target: kStuttgartCenter,
-    zoom: 14.8,
-  );
-
-  Set<gmaps.Marker> get _markers {
-    final markers = <gmaps.Marker>{
-      gmaps.Marker(
-        markerId: const gmaps.MarkerId('you'),
-        position: kUserLocation,
-        infoWindow: const gmaps.InfoWindow(title: 'You are here'),
-        icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(
-          gmaps.BitmapDescriptor.hueAzure,
-        ),
-        zIndexInt: 2,
-      ),
-    };
-
-    for (final b in widget.businesses) {
-      final inCart = widget.cart.contains(b.id);
-      final selected = widget.selectedId == b.id;
-      markers.add(
-        gmaps.Marker(
-          markerId: gmaps.MarkerId('biz-${b.id}'),
-          position: b.latLng,
-          infoWindow: gmaps.InfoWindow(
-            title: b.name,
-            snippet: b.hasPerk ? '${b.perk} · ${b.perkVal}' : b.category,
-          ),
-          icon: gmaps.BitmapDescriptor.defaultMarkerWithHue(
-            inCart
-                ? gmaps.BitmapDescriptor.hueRed
-                : (selected ? gmaps.BitmapDescriptor.hueOrange : b.markerHue),
-          ),
-          onTap: () => widget.onPinTap(b.id),
-          zIndexInt: selected || inCart ? 3 : 1,
-        ),
-      );
-    }
-    return markers;
-  }
-
-  Set<gmaps.Polyline> get _polylines {
-    if (widget.cart.length < 2) return {};
-    final byId = {for (final b in widget.businesses) b.id: b};
-    final points = <gmaps.LatLng>[kUserLocation];
-    for (final id in widget.cart) {
-      final b = byId[id];
-      if (b != null) points.add(b.latLng);
-    }
-    return {
-      gmaps.Polyline(
-        polylineId: const gmaps.PolylineId('stroll'),
-        points: points,
-        color: StrollingColors.primary,
-        width: 4,
-        patterns: [gmaps.PatternItem.dash(18), gmaps.PatternItem.gap(10)],
-      ),
-    };
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return gmaps.GoogleMap(
-      initialCameraPosition: _initial,
-      mapType: gmaps.MapType.normal,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      compassEnabled: false,
-      mapToolbarEnabled: false,
-      buildingsEnabled: true,
-      trafficEnabled: false,
-      markers: _markers,
-      polylines: _polylines,
-      padding: const EdgeInsets.only(top: 160, bottom: 120),
-      onMapCreated: (controller) => _controller = controller,
     );
   }
 }
